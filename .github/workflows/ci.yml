@@ -1,0 +1,56 @@
+# ─────────────────────────────────────
+# 1. WORKFLOW NAME AND TRIGGERS
+# ─────────────────────────────────────
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ─────────────────────────────────────
+  # 2. BUILD AND TEST JOB
+  # ─────────────────────────────────────
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ─────────────────────────────────────
+      # 3. CHECKOUT CODE
+      # ─────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ─────────────────────────────────────
+      # 4. SET UP PYTHON
+      # ─────────────────────────────────────
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      # ─────────────────────────────────────
+      # 5. INSTALL DEPENDENCIES
+      # ─────────────────────────────────────
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # ─────────────────────────────────────
+      # 6. LINT CHECK (basic syntax validation)
+      # ─────────────────────────────────────
+      - name: Check Python syntax
+        run: |
+          python -m py_compile api/main.py
+          python -m py_compile models/autoencoder/model.py
+          python -m py_compile models/bert_classifier/model.py
+          python -m py_compile models/lstm_predictor/model.py
+
+      # ─────────────────────────────────────
+      # 7. BUILD DOCKER IMAGE (validates Dockerfile)
+      # ─────────────────────────────────────
+      - name: Build API Docker image
+        run: docker build -t industrial-api:test -f Dockerfile .
