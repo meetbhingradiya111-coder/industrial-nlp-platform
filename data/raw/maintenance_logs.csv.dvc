@@ -1,0 +1,5 @@
+outs:
+- md5: 283676fb72ac49e276b5666cfe1d3b61
+  size: 844540
+  hash: md5
+  path: maintenance_logs.csv

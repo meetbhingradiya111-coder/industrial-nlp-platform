@@ -1,0 +1,8 @@
+{
+  "0": "Bearing Failure",
+  "1": "Electrical Fault",
+  "2": "Lubrication Failure",
+  "3": "Mechanical Fault",
+  "4": "No Failure",
+  "5": "Pre-Failure Warning"
+}

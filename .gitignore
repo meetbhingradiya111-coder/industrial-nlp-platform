@@ -1,0 +1,11 @@
+.DS_Store
+venv/.DS_Store
+venv/
+.venv/
+mlruns/
+__pycache__/
+*.pkl
+*.pt
+*.bin
+*.h5
+*.onnx

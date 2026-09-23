@@ -1,0 +1,24 @@
+bert_classifier:
+  learning_rate : 0.00002
+  batch_size    : 16
+  epochs        : 10
+  dropout       : 0.3
+  max_length    : 128
+  num_classes   : 6
+  patience      : 3
+
+lstm_predictor:
+  learning_rate : 0.001
+  batch_size    : 32
+  epochs        : 15
+  hidden_size   : 128
+  num_layers    : 2
+  dropout       : 0.3
+  sequence_len  : 10
+
+autoencoder:
+  learning_rate : 0.001
+  batch_size    : 32
+  epochs        : 20
+  encoding_dim  : 64
+  dropout       : 0.2
