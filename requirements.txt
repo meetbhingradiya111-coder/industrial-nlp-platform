@@ -171,3 +171,11 @@ yarl==1.22.0
 zc.lockfile==4.0
 zipp==3.23.1
 plotly
+streamlit
+fastapi
+uvicorn
+torch
+transformers
+pydantic
+plotly
+requests
