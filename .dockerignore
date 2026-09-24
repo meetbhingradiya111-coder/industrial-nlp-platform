@@ -1,11 +1,6 @@
 venv/
 .git/
-.dvc/cache/
+.dvc/
 mlruns/
 __pycache__/
 *.pyc
-.DS_Store
-dashboard/
-notebooks/
-tests/
-*.md

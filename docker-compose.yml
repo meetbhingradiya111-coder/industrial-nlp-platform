@@ -1,0 +1,28 @@
+services:
+  industrial_api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    networks:
+      - app-network
+
+  streamlit_app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    command: streamlit run dashboard/app.py --server.port=8501 --server.address=0.0.0.0
+    ports:
+      - "8501:8501"
+    environment:
+      - API_URL=http://industrial_api:8000
+    depends_on:
+      - industrial_api
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge

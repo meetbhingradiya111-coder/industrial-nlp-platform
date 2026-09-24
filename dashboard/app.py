@@ -3,13 +3,16 @@ import requests
 from datetime import datetime
 import plotly.graph_objects as go
 import plotly.express as px
+import os
 
 # ============================================================
 # CONFIGURATION
 # ============================================================
 
-PREDICT_URL = "http://127.0.0.1:8000/predict"
-RISK_URL = "http://127.0.0.1:8000/predict_risk"
+BACKEND_HOST = os.getenv("BACKEND_HOST", "industrial_api")
+API_BASE_URL = os.getenv("API_URL", "http://industrial_api:8000")
+PREDICT_URL = "http://industrial_api:8000/predict"
+RISK_URL = "http://industrial_api:8000/predict_risk"
 
 st.set_page_config(
     page_title="PredictAI | Industrial Intelligence Console",
@@ -617,13 +620,19 @@ def page_header(title, subtitle):
 # ============================================================
 
 def predict_log(log):
-    response = requests.post(
-        PREDICT_URL,
-        json={"log_text": log},
-        timeout=30
-    )
-    response.raise_for_status()
-    return response.json()
+  urls_to_try = [PREDICT_URL, "http://host.docker.internal:8000/predict"]
+
+  for url in urls_to_try:
+    try:
+      response = requests.post(url, json={"log_text": log}, timeout=5)
+      if response.status_code == 200:
+        return response.json()
+    except requests.exceptions.RequestException:
+      continue
+
+  raise requests.exceptions.ConnectionError(
+      "Backend microservice API is currently unreachable."
+  )
 
 
 # ============================================================
@@ -753,11 +762,11 @@ with st.sidebar:
     )
 
     menu_options = {
-        "📊  Dashboard": "Dashboard",
-        "🧠  AI Log Analyzer": "AI Log Analyzer",
-        "⚡  Machine Risk": "Machine Risk",
-        "📜  Prediction History": "Prediction History",
-        "🏗️  Model Architecture": "Model Architecture"
+        "  Dashboard": "Dashboard",
+        "  AI Log Analyzer": "AI Log Analyzer",
+        "  Machine Risk": "Machine Risk",
+        "  Prediction History": "Prediction History",
+        "  Model Architecture": "Model Architecture"
     }
 
     selected_label = st.radio(

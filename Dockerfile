@@ -22,12 +22,12 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # ─────────────────────────────────────
-# 5. COPY APPLICATION CODE
+# 5. COPY APPLICATION CODE & DATA
 # ─────────────────────────────────────
 COPY api/ ./api/
 COPY models/ ./models/
-COPY data/clean/failure_mapping.json ./data/clean/failure_mapping.json
-COPY data/clean/severity_mapping.json ./data/clean/severity_mapping.json
+# Copy the entire data directory so all files (including maintenance_logs_clean.csv) are included
+COPY data/ ./data/
 
 # ─────────────────────────────────────
 # 6. EXPOSE PORT AND RUN
