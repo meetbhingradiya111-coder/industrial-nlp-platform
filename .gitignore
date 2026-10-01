@@ -10,3 +10,4 @@ __pycache__/
 *.h5
 *.onnx
 .vercel
+.env

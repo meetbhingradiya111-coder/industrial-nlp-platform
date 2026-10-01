@@ -19,7 +19,7 @@ WORKDIR /app
 # 4. INSTALL PYTHON DEPENDENCIES
 # ─────────────────────────────────────
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
 
 # ─────────────────────────────────────
 # 5. COPY APPLICATION CODE & DATA
