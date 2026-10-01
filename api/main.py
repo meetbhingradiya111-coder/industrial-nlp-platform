@@ -2,12 +2,14 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import torch
 import json
+import re
+from typing import List
 from transformers import DistilBertTokenizer
 
 from models.bert_classifier.model import BERTFailureClassifier
 from models.autoencoder.model import LogAutoencoder
 from models.autoencoder.dataset import get_bert_embedding
-from models.lstm_predictor.predict import predict_risk
+from models.lstm_predictor.predict import predict_risk, predict_from_logs
 
 # ─────────────────────────────────────
 # 1. CONFIGURATION
@@ -353,6 +355,49 @@ def predict_machine_risk(request: MachineRequest):
         is_at_risk=result['is_at_risk']
     )
 
+# ─────────────────────────────────────
+# 10b. LSTM SEQUENCE ENDPOINT
+# ─────────────────────────────────────
+
+class SequenceRequest(BaseModel):
+    """Expected input: a list of maintenance log strings (10 needed)"""
+    logs: List[str]
+
+
+class SequenceResponse(BaseModel):
+    """Output from LSTM risk prediction on a raw log sequence"""
+    risk_probability: float
+    is_at_risk: bool
+    threshold: float
+    logs_used: int
+
+
+def clean_log_text(text: str) -> str:
+    text = text.lower()                                                 # lowercase
+    text = re.sub(r'[^a-z0-9\s]', '', text)                             # drop punctuation
+    return re.sub(r'\s+', ' ', text).strip()                            # collapse spaces
+
+
+@app.post("/predict_sequence", response_model=SequenceResponse)
+def predict_sequence_risk(request: SequenceRequest):
+    """
+    Takes a list of raw maintenance logs, cleans them to match the
+    training format, and returns LSTM failure risk for the next 5 logs.
+    """
+
+    logs = [clean_log_text(t) for t in request.logs if t.strip()]       # keep non-empty logs
+
+    result = predict_from_logs(logs)
+
+    if 'error' in result:
+        raise HTTPException(status_code=400, detail=result['error'])
+
+    return SequenceResponse(
+        risk_probability=result['risk_probability'],
+        is_at_risk=result['is_at_risk'],
+        threshold=result['threshold'],
+        logs_used=len(result['logs_used'])
+    )
 
 # ─────────────────────────────────────
 # 11. RUN SERVER (for local testing)

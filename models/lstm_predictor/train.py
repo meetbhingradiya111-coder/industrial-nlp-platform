@@ -1,20 +1,15 @@
-import torch
-import torch.nn as nn
-import numpy as np
-import random
-
-SEED = 42
-random.seed(SEED)
-np.random.seed(SEED)
-torch.manual_seed(SEED)
-if torch.backends.mps.is_available():
-    torch.mps.manual_seed(SEED)
-from torch.utils.data import DataLoader
-import mlflow
-import mlflow.pytorch
-import yaml
 import os
 import sys
+import json
+import random
+import yaml
+import numpy as np
+import torch
+import torch.nn as nn
+import mlflow
+import mlflow.pytorch
+from torch.utils.data import DataLoader
+from sklearn.metrics import f1_score, precision_score, recall_score, average_precision_score
 
 sys.path.insert(0, os.path.abspath(
     os.path.join(os.path.dirname(__file__), '../..')))
@@ -23,15 +18,16 @@ from models.lstm_predictor.model   import LSTMRiskPredictor
 from models.lstm_predictor.dataset import SequenceDataset
 
 # ─────────────────────────────────────
-# LOAD HYPERPARAMETERS FROM params.yaml
+# 1. CONFIGURATION
 # ─────────────────────────────────────
+
 with open('params.yaml', 'r') as f:
-    params = yaml.safe_load(f)
+    params = yaml.safe_load(f)                                          # load hyperparameters
 
 CONFIG = {
     # Data paths
-    'train_path'   : 'data/clean/train.csv',
-    'val_path'     : 'data/clean/val.csv',
+    'train_path'   : 'data/sequences/train.csv',
+    'val_path'     : 'data/sequences/val.csv',
     'save_path'    : 'models/lstm_predictor/',
 
     # Hyperparameters from params.yaml
@@ -42,148 +38,139 @@ CONFIG = {
     'epochs'       : params['lstm_predictor']['epochs'],
     'batch_size'   : params['lstm_predictor']['batch_size'],
     'learning_rate': params['lstm_predictor']['learning_rate'],
+
+    # Fixed settings
+    'horizon'      : params['lstm_predictor'].get('horizon', 5),
     'num_classes'  : 2,
     'input_size'   : 768,
-    'patience'     : 3,
+    'patience'     : 4,
+    'seed'         : 42,
 }
 
-print("\nHyperparameters loaded from params.yaml:")
-for k, v in CONFIG.items():
-    print(f"  {k}: {v}")
 
 # ─────────────────────────────────────
-# DETECT DEVICE
+# 2. REPRODUCIBILITY AND DEVICE
 # ─────────────────────────────────────
+
+random.seed(CONFIG['seed'])
+np.random.seed(CONFIG['seed'])
+torch.manual_seed(CONFIG['seed'])
+if torch.backends.mps.is_available():
+    torch.mps.manual_seed(CONFIG['seed'])
+
 if torch.backends.mps.is_available():
     device = torch.device("mps")
-    print("\nUsing M2 Mac GPU (MPS) ✅")
+    print("Using M2 Mac GPU (MPS) ✅")
 else:
     device = torch.device("cpu")
-    print("\nUsing CPU ✅")
+    print("Using CPU ✅")
+
 
 # ─────────────────────────────────────
-# LOAD DATASETS
+# 3. DATA LOADING
 # ─────────────────────────────────────
-print("\nCreating sequence datasets...")
-print("This may take 5-10 minutes...")
-print("BERT is generating embeddings for all logs...")
 
-train_dataset = SequenceDataset(
-    CONFIG['train_path'],
-    CONFIG['sequence_len']
-)
-val_dataset = SequenceDataset(
-    CONFIG['val_path'],
-    CONFIG['sequence_len']
-)
+def build_loaders():
+    train_dataset = SequenceDataset(CONFIG['train_path'], CONFIG['sequence_len'], CONFIG['horizon'])
+    val_dataset   = SequenceDataset(CONFIG['val_path'],   CONFIG['sequence_len'], CONFIG['horizon'])
 
-train_loader = DataLoader(
-    train_dataset,
-    batch_size = CONFIG['batch_size'],
-    shuffle    = True
-)
-val_loader = DataLoader(
-    val_dataset,
-    batch_size = CONFIG['batch_size'],
-    shuffle    = False
-)
+    train_loader = DataLoader(train_dataset, batch_size=CONFIG['batch_size'], shuffle=True)
+    val_loader   = DataLoader(val_dataset,   batch_size=CONFIG['batch_size'], shuffle=False)
 
-print(f"\nTrain sequences : {len(train_dataset)}")
-print(f"Val sequences   : {len(val_dataset)}")
-print(f"Train batches   : {len(train_loader)}")
-print(f"Val batches     : {len(val_loader)}")
+    print(f"\n✅ Train sequences: {len(train_dataset)} | Val sequences: {len(val_dataset)}")
+    return train_dataset, train_loader, val_loader
+
+
+def compute_class_weights(labels):
+    num_normal  = labels.count(0)
+    num_at_risk = labels.count(1)
+    total       = len(labels)
+
+    weights = [
+        total / (2 * num_normal)  if num_normal  > 0 else 0.0,          # normal weight
+        total / (2 * num_at_risk) if num_at_risk > 0 else 0.0,          # at-risk weight
+    ]
+    print(f"✅ Class weights -> Normal: {weights[0]:.3f} | At Risk: {weights[1]:.3f}")
+    return torch.tensor(weights, dtype=torch.float32).to(device)
+
 
 # ─────────────────────────────────────
-# COMPUTE CLASS WEIGHTS (address imbalance)
+# 4. TRAIN AND VALIDATE
 # ─────────────────────────────────────
-# "At risk" sequences are the minority class. Without weighting,
-# the model can minimize loss by always predicting "normal" -
-# weighting penalizes that shortcut more heavily.
 
-train_labels = train_dataset.labels
-num_normal = train_labels.count(0)
-num_at_risk = train_labels.count(1)
-total = len(train_labels)
-
-print(f"\nTrain label distribution:")
-print(f"  Normal  : {num_normal}")
-print(f"  At Risk : {num_at_risk}")
-
-class_weights = [
-    total / (2 * num_normal) if num_normal > 0 else 0.0,
-    total / (2 * num_at_risk) if num_at_risk > 0 else 0.0,
-]
-class_weights_tensor = torch.tensor(class_weights, dtype=torch.float32).to(device)
-
-print(f"\nComputed class weights:")
-print(f"  Normal  : {class_weights[0]:.3f}")
-print(f"  At Risk : {class_weights[1]:.3f}")
-
-# ─────────────────────────────────────
-# TRAIN ONE EPOCH
-# ─────────────────────────────────────
 def train_one_epoch(model, loader, optimizer, criterion):
     model.train()
     total_loss = 0
-    correct    = 0
-    total      = 0
 
-    for batch_idx, batch in enumerate(loader):
-        sequences = batch['sequence'].to(device)
-        labels    = batch['label'].to(device)
+    for batch in loader:
+        sequences = batch['sequence'].to(device)                        # move inputs
+        labels    = batch['label'].to(device)                           # move labels
 
-        optimizer.zero_grad()
-        outputs     = model(sequences)
-        loss        = criterion(outputs, labels)
-        loss.backward()
-        optimizer.step()
+        optimizer.zero_grad()                                           # reset gradients
+        loss = criterion(model(sequences), labels)                      # forward + loss
+        loss.backward()                                                 # backward pass
+        optimizer.step()                                                # update weights
 
-        predictions = torch.argmax(outputs, dim=1)
-        correct    += (predictions == labels).sum().item()
-        total      += labels.size(0)
         total_loss += loss.item()
 
-        if (batch_idx + 1) % 20 == 0:
-            print(f"  Batch {batch_idx+1}/{len(loader)} "
-                  f"Loss: {loss.item():.4f}")
+    return total_loss / len(loader)
 
-    return total_loss / len(loader), correct / total * 100
 
-# ─────────────────────────────────────
-# VALIDATE
-# ─────────────────────────────────────
 def validate(model, loader, criterion):
     model.eval()
     total_loss = 0
-    correct    = 0
-    total      = 0
+    all_probs  = []
+    all_labels = []
 
     with torch.no_grad():
         for batch in loader:
             sequences = batch['sequence'].to(device)
             labels    = batch['label'].to(device)
 
-            outputs     = model(sequences)
-            loss        = criterion(outputs, labels)
-            predictions = torch.argmax(outputs, dim=1)
+            outputs = model(sequences)
+            total_loss += criterion(outputs, labels).item()
 
-            correct    += (predictions == labels).sum().item()
-            total      += labels.size(0)
-            total_loss += loss.item()
+            probs = torch.softmax(outputs, dim=1)[:, 1]                 # at-risk probability
+            all_probs.extend(probs.cpu().tolist())
+            all_labels.extend(labels.cpu().tolist())
 
-    return total_loss / len(loader), correct / total * 100
+    return total_loss / len(loader), np.array(all_probs), np.array(all_labels)
+
+
+def score_at_threshold(probs, labels, threshold):
+    preds = (probs >= threshold).astype(int)                            # apply threshold
+    return {
+        'accuracy' : float((preds == labels).mean() * 100),
+        'precision': float(precision_score(labels, preds, zero_division=0)),
+        'recall'   : float(recall_score(labels, preds, zero_division=0)),
+        'f1'       : float(f1_score(labels, preds, zero_division=0)),
+    }
+
+
+def find_best_threshold(probs, labels):
+    best_threshold, best_f1 = 0.5, -1.0
+    for threshold in np.arange(0.10, 0.91, 0.05):                       # sweep thresholds
+        f1 = f1_score(labels, (probs >= threshold).astype(int), zero_division=0)
+        if f1 > best_f1:
+            best_threshold, best_f1 = float(threshold), float(f1)       # keep best F1
+    return round(best_threshold, 2), best_f1
+
 
 # ─────────────────────────────────────
-# MAIN TRAINING
+# 5. MAIN TRAINING
 # ─────────────────────────────────────
+
 def train():
-    print("\n" + "="*50)
+    print("\n" + "=" * 50)
     print("STARTING LSTM TRAINING")
-    print("="*50)
+    print("=" * 50)
+
+    train_dataset, train_loader, val_loader = build_loaders()
+    class_weights = compute_class_weights(train_dataset.labels)
 
     mlflow.set_experiment("LSTM_Risk_Predictor")
 
-    with mlflow.start_run(run_name="LSTM_run_1"):
+    with mlflow.start_run(run_name="LSTM_run_horizon"):
         mlflow.log_params(CONFIG)
 
         model = LSTMRiskPredictor(
@@ -194,89 +181,74 @@ def train():
             dropout     = CONFIG['dropout']
         ).to(device)
 
-        print(f"\nModel loaded to: {device}")
+        criterion = nn.CrossEntropyLoss(weight=class_weights)
+        optimizer = torch.optim.Adam(model.parameters(), lr=CONFIG['learning_rate'])
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
 
-        criterion = nn.CrossEntropyLoss(weight=class_weights_tensor)
-        optimizer = torch.optim.Adam(
-            model.parameters(),
-            lr = CONFIG['learning_rate']
-        )
-        scheduler = torch.optim.lr_scheduler.StepLR(
-            optimizer, step_size=5, gamma=0.5
-        )
-
-        best_val_accuracy = 0
-        patience_counter  = 0
+        best_f1          = -1.0
+        patience_counter = 0
+        model_path       = os.path.join(CONFIG['save_path'], 'best_model.pt')
 
         for epoch in range(1, CONFIG['epochs'] + 1):
-
-            print(f"\n{'─'*40}")
-            print(f"EPOCH {epoch}/{CONFIG['epochs']}")
-            print(f"{'─'*40}")
-
-            train_loss, train_acc = train_one_epoch(
-                model, train_loader,
-                optimizer, criterion
-            )
-            val_loss, val_acc = validate(
-                model, val_loader, criterion
-            )
+            train_loss = train_one_epoch(model, train_loader, optimizer, criterion)
+            val_loss, probs, labels = validate(model, val_loader, criterion)
             scheduler.step()
 
-            print(f"\nEpoch {epoch} Results:")
-            print(f"  Train Accuracy : {train_acc:.2f}%")
-            print(f"  Val Accuracy   : {val_acc:.2f}%")
-            print(f"  Train Loss     : {train_loss:.4f}")
-            print(f"  Val Loss       : {val_loss:.4f}")
+            scores = score_at_threshold(probs, labels, 0.5)             # metrics at default cutoff
+            print(f"\nEpoch {epoch}/{CONFIG['epochs']} | "
+                  f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
+            print(f"  Val Acc: {scores['accuracy']:.2f}% | Precision: {scores['precision']:.3f} | "
+                  f"Recall: {scores['recall']:.3f} | F1: {scores['f1']:.3f}")
 
             mlflow.log_metrics({
-                'train_loss'     : train_loss,
-                'train_accuracy' : train_acc,
-                'val_loss'       : val_loss,
-                'val_accuracy'   : val_acc,
+                'train_loss'    : train_loss,
+                'val_loss'      : val_loss,
+                'val_accuracy'  : scores['accuracy'],
+                'val_precision' : scores['precision'],
+                'val_recall'    : scores['recall'],
+                'val_f1'        : scores['f1'],
             }, step=epoch)
 
-            if val_acc > best_val_accuracy:
-                best_val_accuracy = val_acc
-                patience_counter  = 0
-                torch.save(
-                    model.state_dict(),
-                    os.path.join(
-                        CONFIG['save_path'],
-                        'best_model.pt'
-                    )
-                )
-                mlflow.pytorch.log_model(
-                    model, "best_lstm_model"
-                )
-                print(f"  ✅ Best model saved! "
-                      f"Val Acc: {val_acc:.2f}%")
+            if scores['f1'] > best_f1:
+                best_f1          = scores['f1']
+                patience_counter = 0
+                torch.save(model.state_dict(), model_path)              # save best by F1
+                print(f"  ✅ Best model saved (F1: {best_f1:.3f})")
             else:
                 patience_counter += 1
-                print(f"  No improvement. "
-                      f"Patience: {patience_counter}"
-                      f"/{CONFIG['patience']}")
+                print(f"  ⚠️  No improvement. Patience: {patience_counter}/{CONFIG['patience']}")
 
             if patience_counter >= CONFIG['patience']:
-                print("\nEarly stopping triggered!")
+                print("\n⚠️  Early stopping triggered")
                 break
 
-        print("\n" + "="*50)
+        # Reload best checkpoint and pick the threshold on val
+        model.load_state_dict(torch.load(model_path, map_location=device))
+        _, probs, labels = validate(model, val_loader, criterion)
+        threshold, tuned_f1 = find_best_threshold(probs, labels)
+        final = score_at_threshold(probs, labels, threshold)
+        pr_auc = float(average_precision_score(labels, probs))
+
+        with open(os.path.join(CONFIG['save_path'], 'threshold.json'), 'w') as f:
+            json.dump({'threshold': threshold, 'val_f1': tuned_f1,
+                       'horizon': CONFIG['horizon']}, f, indent=2)      # save threshold
+
+        print("\n" + "=" * 50)
         print("LSTM TRAINING COMPLETE")
-        print("="*50)
-        print(f"Best Val Accuracy: {best_val_accuracy:.2f}%")
+        print("=" * 50)
+        print(f"✅ Best threshold (val)  : {threshold}")
+        print(f"✅ Val accuracy          : {final['accuracy']:.2f}%")
+        print(f"✅ Val precision / recall: {final['precision']:.3f} / {final['recall']:.3f}")
+        print(f"✅ Val F1                : {final['f1']:.3f}")
+        print(f"✅ Val PR-AUC            : {pr_auc:.3f}")
 
-        if best_val_accuracy >= 80:
-            print("✅ TARGET ACHIEVED!")
-        else:
-            print("⚠️  Below 80% target.")
+        mlflow.log_metrics({
+            'best_threshold'   : threshold,
+            'tuned_val_f1'     : tuned_f1,
+            'tuned_val_recall' : final['recall'],
+            'val_pr_auc'       : pr_auc,
+        })
 
-        mlflow.log_metric(
-            "best_val_accuracy",
-            best_val_accuracy
-        )
-
-    return best_val_accuracy
 
 if __name__ == "__main__":
     train()

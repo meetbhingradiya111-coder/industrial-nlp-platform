@@ -1,3 +1,5 @@
+import json
+import os
 import torch
 import numpy as np
 import pandas as pd
@@ -10,13 +12,15 @@ from models.lstm_predictor.model import LSTMRiskPredictor
 # ─────────────────────────────────────
 
 CONFIG = {
-    'data_path'      : 'data/clean/maintenance_logs_clean.csv',
-    'lstm_model_path': 'models/lstm_predictor/best_model.pt',
-    'sequence_len'   : 10,
-    'hidden_size'    : 128,
-    'num_layers'     : 2,
-    'dropout'        : 0.3,
-    'max_length'     : 128,
+    'data_path'         : 'data/clean/maintenance_logs_clean.csv',
+    'lstm_model_path'   : 'models/lstm_predictor/best_model.pt',
+    'threshold_path'    : 'models/lstm_predictor/threshold.json',
+    'default_threshold' : 0.5,
+    'sequence_len'      : 10,
+    'hidden_size'       : 128,
+    'num_layers'        : 2,
+    'dropout'           : 0.3,
+    'max_length'        : 128,
 }
 
 
@@ -35,7 +39,20 @@ print(f"LSTM predictor using device: {device} ✅")
 
 
 # ─────────────────────────────────────
-# 3. LOAD BERT (for generating embeddings only, not classification)
+# 3. LOAD RISK THRESHOLD
+# ─────────────────────────────────────
+
+if os.path.exists(CONFIG['threshold_path']):
+    with open(CONFIG['threshold_path'], 'r') as f:
+        THRESHOLD = json.load(f)['threshold']                           # read saved threshold
+    print(f"✅ Risk threshold loaded: {THRESHOLD}")
+else:
+    THRESHOLD = CONFIG['default_threshold']                             # fall back to default
+    print(f"⚠️  threshold.json not found, using default: {THRESHOLD}")
+
+
+# ─────────────────────────────────────
+# 4. LOAD BERT (for generating embeddings only, not classification)
 # ─────────────────────────────────────
 
 print("\nLoading DistilBERT for embeddings...")
@@ -44,11 +61,11 @@ embed_tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
 embed_bert = DistilBertModel.from_pretrained('distilbert-base-uncased').to(device)
 embed_bert.eval()
 
-print("Embedding model loaded ✅")
+print("✅ Embedding model loaded")
 
 
 # ─────────────────────────────────────
-# 4. LOAD TRAINED LSTM MODEL
+# 5. LOAD TRAINED LSTM MODEL
 # ─────────────────────────────────────
 
 print("\nLoading LSTM risk predictor...")
@@ -66,19 +83,19 @@ lstm_model.load_state_dict(
 )
 lstm_model.eval()
 
-print("LSTM loaded ✅")
+print("✅ LSTM loaded")
 
 
 # ─────────────────────────────────────
-# 5. LOAD FULL LOG HISTORY
+# 6. LOAD FULL LOG HISTORY
 # ─────────────────────────────────────
 
-full_data = pd.read_csv(CONFIG['data_path'])
-full_data['date'] = pd.to_datetime(full_data['date'])
+full_data = pd.read_csv(CONFIG['data_path'])                            # read all logs
+full_data['date'] = pd.to_datetime(full_data['date'])                   # parse dates
 
 
 # ─────────────────────────────────────
-# 6. EMBEDDING FUNCTION
+# 7. EMBEDDING FUNCTION
 # ─────────────────────────────────────
 
 def get_embedding(text):
@@ -91,18 +108,53 @@ def get_embedding(text):
         truncation=True,
         return_tensors='pt'
     )
-    input_ids = tokens['input_ids'].to(device)
-    attention_mask = tokens['attention_mask'].to(device)
+    input_ids = tokens['input_ids'].to(device)                          # token ids to device
+    attention_mask = tokens['attention_mask'].to(device)                # mask to device
 
     with torch.no_grad():
-        output = embed_bert(input_ids, attention_mask)
-        embedding = output.last_hidden_state[:, 0, :]
+        output = embed_bert(input_ids, attention_mask)                  # run BERT
+        embedding = output.last_hidden_state[:, 0, :]                   # take CLS embedding
 
     return embedding.cpu().numpy().squeeze()
 
 
 # ─────────────────────────────────────
-# 7. RISK PREDICTION FUNCTION
+# 8. RISK FROM A LIST OF LOGS
+# ─────────────────────────────────────
+
+def predict_from_logs(logs):
+    """
+    Predicts failure risk from a list of log strings
+    (uses the most recent sequence_len logs)
+    """
+
+    if len(logs) < CONFIG['sequence_len']:
+        return {
+            'error': f"Need {CONFIG['sequence_len']} logs, got {len(logs)}."
+        }
+
+    recent = logs[-CONFIG['sequence_len']:]                             # keep last N logs
+    embeddings = [get_embedding(text) for text in recent]               # embed each log
+    sequence = np.stack(embeddings)                                     # shape (N, 768)
+
+    # Add batch dimension: (1, sequence_len, 768)
+    sequence_tensor = torch.tensor(sequence, dtype=torch.float32).unsqueeze(0).to(device)
+
+    with torch.no_grad():
+        logits = lstm_model(sequence_tensor)                            # forward pass
+        probs = torch.softmax(logits, dim=1)                            # class probabilities
+        risk_prob = probs[0][1].item()                                  # probability of at risk
+
+    return {
+        'risk_probability': round(risk_prob, 4),
+        'is_at_risk': bool(risk_prob >= THRESHOLD),
+        'threshold': THRESHOLD,
+        'logs_used': recent,
+    }
+
+
+# ─────────────────────────────────────
+# 9. RISK FOR A MACHINE IN THE DATASET
 # ─────────────────────────────────────
 
 def predict_risk(machine_id: str):
@@ -111,44 +163,22 @@ def predict_risk(machine_id: str):
     and predicts failure risk using the trained LSTM.
     """
 
-    # Filter and sort this machine's logs by date
-    machine_logs = full_data[full_data['machine_id'] == machine_id]
+    machine_logs = full_data[full_data['machine_id'] == machine_id]     # filter machine
     machine_logs = machine_logs.sort_values('date').reset_index(drop=True)
 
-    # Check we have enough history for a full sequence
     if len(machine_logs) < CONFIG['sequence_len']:
         return {
             'error': f"Not enough history for {machine_id}. "
                      f"Found {len(machine_logs)} logs, need {CONFIG['sequence_len']}."
         }
 
-    # Take the most recent N logs
-    recent_logs = machine_logs.tail(CONFIG['sequence_len'])
-
-    # Generate embeddings for each log in the sequence
-    embeddings = [get_embedding(text) for text in recent_logs['clean_log']]
-    sequence = np.stack(embeddings)
-
-    # Convert to tensor with batch dimension: (1, sequence_len, 768)
-    sequence_tensor = torch.tensor(sequence, dtype=torch.float32).unsqueeze(0).to(device)
-
-    # Run through LSTM
-    with torch.no_grad():
-        logits = lstm_model(sequence_tensor)
-        probs = torch.softmax(logits, dim=1)
-        risk_prob = probs[0][1].item()   # Probability of class 1 = at risk
-        is_at_risk = risk_prob > 0.5
-
-    return {
-        'machine_id': machine_id,
-        'risk_probability': round(risk_prob, 4),
-        'is_at_risk': is_at_risk,
-        'logs_used': recent_logs['clean_log'].tolist()
-    }
+    result = predict_from_logs(machine_logs['clean_log'].tolist())      # reuse log-based predictor
+    result['machine_id'] = machine_id
+    return result
 
 
 # ─────────────────────────────────────
-# 8. TEST WITH A SAMPLE MACHINE
+# 10. TEST WITH A SAMPLE MACHINE
 # ─────────────────────────────────────
 
 if __name__ == "__main__":

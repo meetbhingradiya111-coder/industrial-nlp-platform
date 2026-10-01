@@ -1,7 +1,13 @@
+import os
+import json
+import numpy as np
 import torch
 import mlflow
 from torch.utils.data import DataLoader
-from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.metrics import (
+    confusion_matrix, precision_score, recall_score,
+    f1_score, average_precision_score
+)
 
 from models.lstm_predictor.model import LSTMRiskPredictor
 from models.lstm_predictor.dataset import SequenceDataset
@@ -11,18 +17,19 @@ from models.lstm_predictor.dataset import SequenceDataset
 # ─────────────────────────────────────
 
 CONFIG = {
-    'val_path'        : 'data/clean/val.csv',
-    'lstm_model_path' : 'models/lstm_predictor/best_model.pt',
-    'sequence_len'     : 10,
-    'hidden_size'      : 128,
-    'num_layers'       : 2,
-    'dropout'          : 0.3,
-    'batch_size'       : 32,
+    'test_path'      : 'data/sequences/test.csv',
+    'model_path'     : 'models/lstm_predictor/best_model.pt',
+    'threshold_path' : 'models/lstm_predictor/threshold.json',
+    'sequence_len'   : 10,
+    'hidden_size'    : 128,
+    'num_layers'     : 2,
+    'dropout'        : 0.3,
+    'batch_size'     : 32,
 }
 
 
 # ─────────────────────────────────────
-# 2. DETECT DEVICE (M2 Mac = mps)
+# 2. DEVICE
 # ─────────────────────────────────────
 
 if torch.backends.mps.is_available():
@@ -36,88 +43,113 @@ print(f"Using device: {device} ✅")
 
 
 # ─────────────────────────────────────
-# 3. LOAD VALIDATION SEQUENCES
+# 3. LOAD SAVED THRESHOLD
 # ─────────────────────────────────────
 
-print("\nBuilding validation sequences (this embeds every log, may take a minute)...")
+with open(CONFIG['threshold_path'], 'r') as f:
+    saved = json.load(f)                                                # threshold picked on val
 
-val_dataset = SequenceDataset(CONFIG['val_path'], sequence_len=CONFIG['sequence_len'])
-val_loader = DataLoader(val_dataset, batch_size=CONFIG['batch_size'], shuffle=False)
+THRESHOLD = saved['threshold']
+HORIZON   = saved['horizon']
+print(f"✅ Threshold from val: {THRESHOLD} | Horizon: {HORIZON}")
 
 
 # ─────────────────────────────────────
-# 4. LOAD TRAINED MODEL
+# 4. LOAD TEST DATA AND MODEL
 # ─────────────────────────────────────
 
-print("\nLoading trained LSTM...")
+print("\nBuilding test sequences...")
+test_dataset = SequenceDataset(CONFIG['test_path'], CONFIG['sequence_len'], HORIZON)
+test_loader  = DataLoader(test_dataset, batch_size=CONFIG['batch_size'], shuffle=False)
 
 model = LSTMRiskPredictor(
-    input_size=768,
-    hidden_size=CONFIG['hidden_size'],
-    num_layers=CONFIG['num_layers'],
-    num_classes=2,
-    dropout=CONFIG['dropout']
+    input_size  = 768,
+    hidden_size = CONFIG['hidden_size'],
+    num_layers  = CONFIG['num_layers'],
+    num_classes = 2,
+    dropout     = CONFIG['dropout']
 ).to(device)
-
-model.load_state_dict(torch.load(CONFIG['lstm_model_path'], map_location=device))
+model.load_state_dict(torch.load(CONFIG['model_path'], map_location=device))
 model.eval()
-
-print("Model loaded ✅")
+print("✅ Model loaded")
 
 
 # ─────────────────────────────────────
-# 5. RUN EVALUATION
+# 5. EVALUATION
 # ─────────────────────────────────────
 
-def evaluate():
-    all_preds = []
-    all_labels = []
+def get_probabilities():
+    all_probs, all_labels = [], []
 
     with torch.no_grad():
-        for batch in val_loader:
-            sequences = batch['sequence'].to(device)
-            labels = batch['label'].to(device)
+        for batch in test_loader:
+            outputs = model(batch['sequence'].to(device))               # forward pass
+            probs   = torch.softmax(outputs, dim=1)[:, 1]               # at-risk probability
+            all_probs.extend(probs.cpu().tolist())
+            all_labels.extend(batch['label'].tolist())
 
-            outputs = model(sequences)
-            preds = torch.argmax(outputs, dim=1)
+    return np.array(all_probs), np.array(all_labels)
 
-            all_preds.extend(preds.cpu().tolist())
-            all_labels.extend(labels.cpu().tolist())
 
-    print("\n" + "="*50)
-    print("CONFUSION MATRIX (rows=actual, cols=predicted)")
-    print("="*50)
-    print(confusion_matrix(all_labels, all_preds))
+def score(probs, labels, threshold):
+    preds = (probs >= threshold).astype(int)                            # apply threshold
+    return {
+        'accuracy' : float((preds == labels).mean() * 100),
+        'precision': float(precision_score(labels, preds, zero_division=0)),
+        'recall'   : float(recall_score(labels, preds, zero_division=0)),
+        'f1'       : float(f1_score(labels, preds, zero_division=0)),
+        'cm'       : confusion_matrix(labels, preds),
+    }
 
-    print("\nClassification Report:")
-    print(classification_report(all_labels, all_preds, digits=4))
 
-    report = classification_report(all_labels, all_preds, digits=4, output_dict=True)
+def print_scores(title, s):
+    print(f"\n{title}")
+    print(f"  Accuracy  : {s['accuracy']:.2f}%")
+    print(f"  Precision : {s['precision']:.3f}")
+    print(f"  Recall    : {s['recall']:.3f}")
+    print(f"  F1        : {s['f1']:.3f}")
+    print(f"  Confusion matrix (rows=actual, cols=predicted):\n{s['cm']}")
 
-    # Check what fraction of predictions are "normal" (class 0)
-    pred_normal_ratio = all_preds.count(0) / len(all_preds)
-    print(f"\n% of predictions that are 'Normal': {pred_normal_ratio*100:.1f}%")
 
-    if pred_normal_ratio > 0.90:
-        print("⚠️  Model is likely just predicting the majority class — not learning real patterns.")
+def evaluate():
+    probs, labels = get_probabilities()
 
-    return report, pred_normal_ratio
+    majority = max(labels.mean(), 1 - labels.mean()) * 100              # always-guess-majority accuracy
+    pr_auc   = float(average_precision_score(labels, probs))
 
+    print("\n" + "=" * 50)
+    print("TEST SET RESULTS (held-out machines)")
+    print("=" * 50)
+    print(f"Test sequences: {len(labels)} | At-risk share: {labels.mean() * 100:.1f}%")
+    print(f"Majority-class accuracy: {majority:.2f}%")
+
+    default = score(probs, labels, 0.5)
+    tuned   = score(probs, labels, THRESHOLD)
+    print_scores("At default threshold 0.5:", default)
+    print_scores(f"At tuned threshold {THRESHOLD}:", tuned)
+    print(f"\n✅ Test PR-AUC: {pr_auc:.3f}")
+
+    return default, tuned, pr_auc, majority
+
+
+# ─────────────────────────────────────
+# 6. MAIN
+# ─────────────────────────────────────
 
 if __name__ == "__main__":
     mlflow.set_experiment("LSTM_Risk_Predictor")
 
-    with mlflow.start_run(run_name="LSTM_Evaluation"):
-        report, pred_normal_ratio = evaluate()
+    with mlflow.start_run(run_name="LSTM_Test_Evaluation"):
+        default, tuned, pr_auc, majority = evaluate()
 
-        mlflow.log_metric("val_accuracy", report["accuracy"])
-        mlflow.log_metric("macro_f1", report["macro avg"]["f1-score"])
-        mlflow.log_metric("weighted_f1", report["weighted avg"]["f1-score"])
-        mlflow.log_metric("pred_normal_ratio", pred_normal_ratio)
-
-        if "0" in report:
-            mlflow.log_metric("normal_precision", report["0"]["precision"])
-            mlflow.log_metric("normal_recall", report["0"]["recall"])
-        if "1" in report:
-            mlflow.log_metric("at_risk_precision", report["1"]["precision"])
-            mlflow.log_metric("at_risk_recall", report["1"]["recall"])
+        mlflow.log_metrics({
+            'test_accuracy'        : tuned['accuracy'],
+            'test_precision'       : tuned['precision'],
+            'test_recall'          : tuned['recall'],
+            'test_f1'              : tuned['f1'],
+            'test_pr_auc'          : pr_auc,
+            'test_accuracy_at_0.5' : default['accuracy'],
+            'test_recall_at_0.5'   : default['recall'],
+            'majority_accuracy'    : majority,
+            'threshold'            : THRESHOLD,
+        })
