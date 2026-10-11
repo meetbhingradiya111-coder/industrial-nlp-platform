@@ -15,12 +15,12 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           port: 22
-          timeout: 30s
-          command_timeout: 10m
+          timeout: 60s
+          command_timeout: 15m
+          script_stop: true
 
           script: |
             cd ~/industrial-nlp-platform
             git pull origin main
-            docker compose down
             docker compose build
             docker compose up -d
