@@ -21,6 +21,6 @@ jobs:
 
           script: |
             cd ~/industrial-nlp-platform
-            git pull origin main
+            git pull --autostash origin main
             docker compose build
             docker compose up -d
