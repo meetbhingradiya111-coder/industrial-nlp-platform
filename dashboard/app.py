@@ -270,6 +270,7 @@ button[data-testid="baseButton-headerNoPadding"] svg,
 /* ---------------- ENHANCED SIDEBAR ---------------- */
 section[data-testid="stSidebar"] {
     background: rgba(10, 14, 23, 0.95) !important;
+    -webkit-backdrop-filter: blur(24px) !important;
     backdrop-filter: blur(24px) !important;
     border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
 }
@@ -583,8 +584,19 @@ textarea:focus, input:focus {
     box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2) !important;
 }
 
-#MainMenu, footer, header[data-testid="stHeader"] {
-    visibility: hidden;
+#MainMenu, footer { visibility: hidden; }
+header[data-testid="stHeader"] { background: transparent; }
+
+/* Hide the Deploy button and menu, but keep the reopen-sidebar button */
+[data-testid="stAppDeployButton"],
+[data-testid="stMainMenu"] { visibility: hidden; }
+
+/* Always keep the reopen-sidebar button visible (works in Safari too) */
+[data-testid="stExpandSidebarButton"],
+[data-testid="stSidebarCollapsedControl"] {
+    visibility: visible !important;
+    opacity: 1 !important;
+    z-index: 999999 !important;
 }
 
 </style>
