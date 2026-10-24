@@ -1409,6 +1409,7 @@ elif selected_page == "Machine Risk":
             line_dash="dash",
             line_color="#94a3b8",
             annotation_text="Model threshold (50%)",
+            annotation_position="top left",  # keeps the label clear of the last point
             annotation_font_color="#94a3b8"
         )
         fig_trend.update_layout(
