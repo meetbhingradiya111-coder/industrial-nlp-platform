@@ -1520,6 +1520,8 @@ elif selected_page == "Model Architecture":
 
     page_header("Model Architecture", "Technical topology of integrated multi-model pipeline")
 
+    # ---------------- 1. PIPELINE FLOW / CONNECTOR BARS ----------------
+
     render_html(
         """
         <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 24px;">
