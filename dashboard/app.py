@@ -41,6 +41,9 @@ if "machine_result" not in st.session_state:
 if "log_input_text" not in st.session_state:
     st.session_state.log_input_text = ""
 
+if "ai_log_input_text" not in st.session_state:
+    st.session_state.ai_log_input_text = ""
+
 if "fleet_data" not in st.session_state:
     st.session_state.fleet_data = {}
 
@@ -205,7 +208,6 @@ AE_PRESETS = {
 }
 
 def get_machine_logs(machine_idx, is_degrading=False):
-    """Retrieves exact pre-defined sequences for Machines 1 to 5 or fallback loop."""
     config = MACHINE_LOGS.get(machine_idx % 5)
     return config["degrading"] if is_degrading else config["healthy"]
 
@@ -595,44 +597,6 @@ button[kind="primary"] {
     color: #ffffff !important;
 }
 
-/* ---------------- TINTED ACTION BUTTONS ---------------- */
-[class*="st-key-btn_green"] button {
-    background: rgba(52, 211, 153, 0.12) !important;
-    border: 1px solid rgba(52, 211, 153, 0.45) !important;
-    color: #34d399 !important;
-}
-[class*="st-key-btn_green"] button:hover {
-    background: rgba(52, 211, 153, 0.22) !important;
-    box-shadow: 0 6px 20px rgba(52, 211, 153, 0.2) !important;
-}
-[class*="st-key-btn_amber"] button {
-    background: rgba(251, 191, 36, 0.12) !important;
-    border: 1px solid rgba(251, 191, 36, 0.45) !important;
-    color: #fbbf24 !important;
-}
-[class*="st-key-btn_amber"] button:hover {
-    background: rgba(251, 191, 36, 0.22) !important;
-    box-shadow: 0 6px 20px rgba(251, 191, 36, 0.2) !important;
-}
-[class*="st-key-btn_red"] button {
-    background: rgba(248, 113, 113, 0.12) !important;
-    border: 1px solid rgba(248, 113, 113, 0.45) !important;
-    color: #f87171 !important;
-}
-[class*="st-key-btn_red"] button:hover {
-    background: rgba(248, 113, 113, 0.22) !important;
-    box-shadow: 0 6px 20px rgba(248, 113, 113, 0.2) !important;
-}
-[class*="st-key-btn_blue"] button {
-    background: rgba(99, 102, 241, 0.12) !important;
-    border: 1px solid rgba(99, 102, 241, 0.45) !important;
-    color: #a5b4fc !important;
-}
-[class*="st-key-btn_blue"] button:hover {
-    background: rgba(99, 102, 241, 0.22) !important;
-    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.2) !important;
-}
-
 textarea, input {
     background: rgba(10, 14, 23, 0.8) !important;
     color: #f1f5f9 !important;
@@ -648,11 +612,9 @@ textarea:focus, input:focus {
 #MainMenu, footer { visibility: hidden; }
 header[data-testid="stHeader"] { background: transparent; }
 
-/* Hide the Deploy button and menu, but keep the reopen-sidebar button */
 [data-testid="stAppDeployButton"],
 [data-testid="stMainMenu"] { visibility: hidden; }
 
-/* Always keep the reopen-sidebar button visible (works in Safari too) */
 [data-testid="stExpandSidebarButton"],
 [data-testid="stSidebarCollapsedControl"] {
     visibility: visible !important;
@@ -693,49 +655,47 @@ def page_header(title, subtitle):
 # ============================================================
 
 def predict_log(log):
-  urls_to_try = [PREDICT_URL, "http://host.docker.internal:8000/predict"]
+    urls_to_try = [PREDICT_URL, "http://host.docker.internal:8000/predict"]
 
-  for url in urls_to_try:
-    try:
-      response = requests.post(url, json={"log_text": log}, timeout=5)
-      if response.status_code == 200:
-        return response.json()
-    except requests.exceptions.RequestException:
-      continue
+    for url in urls_to_try:
+        try:
+            response = requests.post(url, json={"log_text": log}, timeout=5)
+            if response.status_code == 200:
+                return response.json()
+        except requests.exceptions.RequestException:
+            continue
 
-  raise requests.exceptions.ConnectionError(
-      "Backend microservice API is currently unreachable."
-  )
+    raise requests.exceptions.ConnectionError(
+        "Backend microservice API is currently unreachable."
+    )
 
 
 def predict_sequence(logs):
-  # Send the ordered log list to the LSTM sequence endpoint
-  urls_to_try = [SEQUENCE_URL, "http://host.docker.internal:8000/predict_sequence"]
+    urls_to_try = [SEQUENCE_URL, "http://host.docker.internal:8000/predict_sequence"]
 
-  for url in urls_to_try:
-    try:
-      response = requests.post(url, json={"logs": logs}, timeout=15)
-      if response.status_code == 200:
-        return response.json()
-    except requests.exceptions.RequestException:
-      continue
+    for url in urls_to_try:
+        try:
+            response = requests.post(url, json={"logs": logs}, timeout=15)
+            if response.status_code == 200:
+                return response.json()
+        except requests.exceptions.RequestException:
+            continue
 
-  raise requests.exceptions.ConnectionError(
-      "Sequence API (/predict_sequence) is unreachable or rejected the request."
-  )
+    raise requests.exceptions.ConnectionError(
+        "Sequence API (/predict_sequence) is unreachable or rejected the request."
+    )
 
 
 def extract_risk_pct(resp):
-  # Read the risk probability from the API response and return it as 0-100
-  for key in ["risk_probability", "failure_probability", "probability", "risk_score", "risk"]:
-    if key in resp:
-      try:
-        val = float(resp[key])
-        return val * 100 if val <= 1 else val
-      except (TypeError, ValueError):
-        continue
+    for key in ["risk_probability", "failure_probability", "probability", "risk_score", "risk"]:
+        if key in resp:
+            try:
+                val = float(resp[key])
+                return val * 100 if val <= 1 else val
+            except (TypeError, ValueError):
+                continue
 
-  raise KeyError(f"No risk probability key found in API response: {resp}")
+    raise KeyError(f"No risk probability key found in API response: {resp}")
 
 
 # ============================================================
@@ -798,7 +758,6 @@ def get_anomaly(result):
 
 
 def hex_to_rgba(color, alpha):
-    # Convert a #rrggbb color into an rgba() string with the given opacity
     color = color.lstrip("#")
     r, g, b = int(color[0:2], 16), int(color[2:4], 16), int(color[4:6], 16)
     return f"rgba({r}, {g}, {b}, {alpha})"
@@ -1118,22 +1077,6 @@ if selected_page == "Dashboard":
         if st.button("Sample: Mechanical Fault", key="sample_mech", use_container_width=True):
             st.session_state.log_input_text = "Severe shaft misalignment and excessive mechanical vibration detected across primary drive assembly."
             st.rerun()
-    row3_col1, row3_col2, row3_col3 = st.columns(3)
-
-    with row3_col1:
-        if st.button("Sample: Normal", key="sample_ae_normal", use_container_width=True):
-            st.session_state.log_input_text = AE_PRESETS["normal"]  # fill the log box
-            st.rerun()
-
-    with row3_col2:
-        if st.button("Sample: Borderline", key="sample_ae_border", use_container_width=True):
-            st.session_state.log_input_text = AE_PRESETS["borderline"]
-            st.rerun()
-
-    with row3_col3:
-        if st.button("Sample: Anomaly", key="sample_ae_anomaly", use_container_width=True):
-            st.session_state.log_input_text = AE_PRESETS["anomaly"]
-            st.rerun()
             
     log_input = st.text_area(
         "Log Input",
@@ -1166,8 +1109,35 @@ elif selected_page == "AI Log Analyzer":
 
     page_header("AI Log Analyzer", "Deep-dive NLP text classification and anomaly detection")
 
+    render_html(
+        """
+        <div style="margin-bottom: 10px;">
+            <div style="font-size: 0.95rem; font-weight: 700; color: #f8fafc;">Autoencoder Preset Samples</div>
+            <div style="font-size: 0.75rem; color: #64748b;">Select a preset telemetry sample to test anomaly reconstruction.</div>
+        </div>
+        """
+    )
+
+    ai_col1, ai_col2, ai_col3 = st.columns(3)
+
+    with ai_col1:
+        if st.button("Sample: Normal", key="ai_sample_normal", use_container_width=True):
+            st.session_state.ai_log_input_text = AE_PRESETS["normal"]
+            st.rerun()
+
+    with ai_col2:
+        if st.button("Sample: Borderline", key="ai_sample_border", use_container_width=True):
+            st.session_state.ai_log_input_text = AE_PRESETS["borderline"]
+            st.rerun()
+
+    with ai_col3:
+        if st.button("Sample: Anomaly", key="ai_sample_anomaly", use_container_width=True):
+            st.session_state.ai_log_input_text = AE_PRESETS["anomaly"]
+            st.rerun()
+
     log_input = st.text_area(
         "Maintenance Log Input",
+        key="ai_log_input_text",
         placeholder="Describe symptoms, thermographic reads, vibration patterns, or mechanical noises...",
         height=140
     )
@@ -1181,6 +1151,7 @@ elif selected_page == "AI Log Analyzer":
         clear_analysis = st.button("Clear Dashboard", use_container_width=True)
 
     if clear_analysis:
+        st.session_state.ai_log_input_text = ""
         st.session_state.last_result = None
         st.session_state.last_analyzed = None
         st.rerun()
@@ -1292,7 +1263,6 @@ elif selected_page == "Machine Risk":
         "Configure industrial machine fleet and analyze operational log sequences to project failure timelines"
     )
 
-    # ---------------- 1. FLEET CONFIGURATION ----------------
     render_html(
         """
         <div class="glass-panel">
@@ -1318,7 +1288,6 @@ elif selected_page == "Machine Risk":
 
     machine_options = [f"Machine #{i+1} (M-10{i+1})" for i in range(num_machines)]
 
-    # ---------------- 2. MACHINE SELECTOR & LOG INPUT ----------------
     render_html(
         """
         <div style="margin-top: 24px; margin-bottom: 10px;">
@@ -1331,11 +1300,9 @@ elif selected_page == "Machine Risk":
     selected_machine = st.selectbox("Target Machine", machine_options)
     machine_idx = machine_options.index(selected_machine)
 
-    # Initialize entry list for selected machine if not existing
     if selected_machine not in st.session_state.fleet_data:
         st.session_state.fleet_data[selected_machine] = [""] * 10
 
-    # Quick Presets for fast testing
     preset_col1, preset_col2 = st.columns(2)
 
     with preset_col1:
@@ -1343,7 +1310,6 @@ elif selected_page == "Machine Risk":
             healthy_seq = get_machine_logs(machine_idx, is_degrading=False)
             st.session_state.fleet_data[selected_machine] = healthy_seq
 
-            # Explicitly force Streamlit text widget keys to update immediately
             for idx, text in enumerate(healthy_seq):
                 st.session_state[f"{selected_machine}_log_{idx}"] = text
             st.rerun()
@@ -1352,12 +1318,10 @@ elif selected_page == "Machine Risk":
         if st.button("Populate Best Demo Sequence", key="btn_blue_best", use_container_width=True):
             st.session_state.fleet_data[selected_machine] = list(LSTM_BEST_SEQUENCE)
 
-            # Explicitly force Streamlit text widget keys to update immediately
             for idx, text in enumerate(LSTM_BEST_SEQUENCE):
                 st.session_state[f"{selected_machine}_log_{idx}"] = text
             st.rerun()
 
-    # Expandable 10 Log Inputs
     with st.expander(f"View / Edit 10 Sequence Logs for {selected_machine}", expanded=True):
         updated_logs = []
         grid_col1, grid_col2 = st.columns(2, gap="medium")
@@ -1366,7 +1330,6 @@ elif selected_page == "Machine Risk":
             target_col = grid_col1 if i < 5 else grid_col2
             widget_key = f"{selected_machine}_log_{i}"
             
-            # Key sync with session state fleet data
             if widget_key not in st.session_state:
                 st.session_state[widget_key] = st.session_state.fleet_data[selected_machine][i]
 
@@ -1380,7 +1343,6 @@ elif selected_page == "Machine Risk":
         
         st.session_state.fleet_data[selected_machine] = updated_logs
 
-    # ---------------- 3. PREDICTION & FAILURE TIMELINE ----------------
     if st.button(f"Predict Failure Timeline for {selected_machine}", type="primary", use_container_width=True):
         active_logs = [l for l in st.session_state.fleet_data[selected_machine] if l.strip()]
         
@@ -1389,21 +1351,18 @@ elif selected_page == "Machine Risk":
         else:
             with st.spinner("Processing temporal log sequence through DistilBERT + LSTM Risk Engine..."):
                 try:
-                    # Real LSTM risk for the full log sequence
                     full_resp = predict_sequence(active_logs)
                     risk_pct = min(max(extract_risk_pct(full_resp), 0.0), 100.0)
 
-                    # Real risk after each prefix of logs (for the chart)
                     trend = []
                     for k in range(1, len(active_logs) + 1):
                         try:
-                            window = [active_logs[0]] * (10 - k) + active_logs[:k]  # pad to a full 10-log window
-                            trend.append(extract_risk_pct(predict_sequence(window)))  # risk after k real logs
+                            window = [active_logs[0]] * (10 - k) + active_logs[:k]
+                            trend.append(extract_risk_pct(predict_sequence(window)))
                         except Exception:
-                            trend.append(None)  # API rejected this window, leave a gap
-                    trend[-1] = risk_pct  # last point always equals the full-sequence result
+                            trend.append(None)
+                    trend[-1] = risk_pct
 
-                    # Rule-based remaining time estimate from the real risk
                     estimated_days = max(1, int((100 - risk_pct) * 0.45))
                     estimated_hours = estimated_days * 24
 
@@ -1421,7 +1380,6 @@ elif selected_page == "Machine Risk":
                 except Exception as e:
                     st.error(f"Prediction Error: {e}")
 
-    # ---------------- 4. RESULTS DISPLAY ----------------
     m_res = st.session_state.machine_result
 
     if m_res and m_res.get("machine_id") == selected_machine:
@@ -1472,27 +1430,26 @@ elif selected_page == "Machine Risk":
                 """
             )
 
-        # Time-to-Failure Forecast Chart
         steps = [f"Log #{i+1}" for i in range(m_res['total_logs'])]
-        trend_data = m_res['trend']  # real per-prefix risk values from the API
+        trend_data = m_res['trend']
 
         fig_trend = go.Figure()
         fig_trend.add_trace(go.Scatter(
-            x=steps,  # Log #1 ... Log #N labels
-            y=trend_data,  # real model risk after each log
+            x=steps,
+            y=trend_data,
             mode='lines+markers',
-            connectgaps=True,  # join the line across any missing points
+            connectgaps=True,
             line=dict(color=m_res['risk_color'], width=3),
             marker=dict(size=8, color='#f8fafc'),
-            hovertemplate="%{x}<br>Risk: %{y:.1f}%<extra></extra>",  # show exact value on hover
+            hovertemplate="%{x}<br>Risk: %{y:.1f}%<extra></extra>",
             name="Degradation Trend"
         ))
-        fig_trend.add_hline(  # draw the model's 50% decision threshold
+        fig_trend.add_hline(
             y=50,
             line_dash="dash",
             line_color="#94a3b8",
             annotation_text="Model threshold (50%)",
-            annotation_position="top left",  # keeps the label clear of the last point
+            annotation_position="top left",
             annotation_font_color="#94a3b8"
         )
         fig_trend.update_layout(
