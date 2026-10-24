@@ -1314,9 +1314,10 @@ elif selected_page == "Machine Risk":
                     trend = []
                     for k in range(1, len(active_logs) + 1):
                         try:
-                            trend.append(extract_risk_pct(predict_sequence(active_logs[:k])))
+                            window = [active_logs[0]] * (10 - k) + active_logs[:k]  # pad to a full 10-log window
+                            trend.append(extract_risk_pct(predict_sequence(window)))  # risk after k real logs
                         except Exception:
-                            trend.append(None)  # API rejected a short prefix, leave a gap
+                            trend.append(None)  # API rejected this window, leave a gap
                     trend[-1] = risk_pct  # last point always equals the full-sequence result
 
                     # Rule-based remaining time estimate from the real risk
@@ -1394,13 +1395,22 @@ elif selected_page == "Machine Risk":
 
         fig_trend = go.Figure()
         fig_trend.add_trace(go.Scatter(
-            x=steps, 
-            y=trend_data, 
+            x=steps,  # Log #1 ... Log #N labels
+            y=trend_data,  # real model risk after each log
             mode='lines+markers',
+            connectgaps=True,  # join the line across any missing points
             line=dict(color=m_res['risk_color'], width=3),
             marker=dict(size=8, color='#f8fafc'),
+            hovertemplate="%{x}<br>Risk: %{y:.1f}%<extra></extra>",  # show exact value on hover
             name="Degradation Trend"
         ))
+        fig_trend.add_hline(  # draw the model's 50% decision threshold
+            y=50,
+            line_dash="dash",
+            line_color="#94a3b8",
+            annotation_text="Model threshold (50%)",
+            annotation_font_color="#94a3b8"
+        )
         fig_trend.update_layout(
             title=f"<b>Degradation Sequence Projection ({selected_machine})</b>",
             paper_bgcolor="rgba(0,0,0,0)",
