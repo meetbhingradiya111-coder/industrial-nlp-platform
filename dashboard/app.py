@@ -13,6 +13,7 @@ BACKEND_HOST = os.getenv("BACKEND_HOST", "industrial_api")
 API_BASE_URL = os.getenv("API_URL", "http://industrial_api:8000")
 PREDICT_URL = "http://industrial_api:8000/predict"
 RISK_URL = "http://industrial_api:8000/predict_risk"
+SEQUENCE_URL = "http://industrial_api:8000/predict_sequence"
 
 st.set_page_config(
     page_title="PredictAI | Industrial Intelligence Console",
@@ -647,6 +648,36 @@ def predict_log(log):
   )
 
 
+def predict_sequence(logs):
+  # Send the ordered log list to the LSTM sequence endpoint
+  urls_to_try = [SEQUENCE_URL, "http://host.docker.internal:8000/predict_sequence"]
+
+  for url in urls_to_try:
+    try:
+      response = requests.post(url, json={"logs": logs}, timeout=15)
+      if response.status_code == 200:
+        return response.json()
+    except requests.exceptions.RequestException:
+      continue
+
+  raise requests.exceptions.ConnectionError(
+      "Sequence API (/predict_sequence) is unreachable or rejected the request."
+  )
+
+
+def extract_risk_pct(resp):
+  # Read the risk probability from the API response and return it as 0-100
+  for key in ["risk_probability", "failure_probability", "probability", "risk_score", "risk"]:
+    if key in resp:
+      try:
+        val = float(resp[key])
+        return val * 100 if val <= 1 else val
+      except (TypeError, ValueError):
+        continue
+
+  raise KeyError(f"No risk probability key found in API response: {resp}")
+
+
 # ============================================================
 # DATA EXTRACTION HELPERS
 # ============================================================
@@ -799,7 +830,7 @@ with st.sidebar:
                 Connected & Operational
             </div>
             <div style="color: #475569; font-size: 0.68rem; margin-top: 4px;">
-                Latency: 14ms · Model v2.4
+                Model: DistilBERT + LSTM
             </div>
         </div>
         """
@@ -1275,24 +1306,33 @@ elif selected_page == "Machine Risk":
         else:
             with st.spinner("Processing temporal log sequence through DistilBERT + LSTM Risk Engine..."):
                 try:
-                    degradation_keywords = ["noise", "vibration", "abnormal", "elevated", "persists", "grinding", "overheating", "rapidly", "severe", "intensifying", "leak", "hot", "fluctuation", "hissing"]
-                    risk_score = sum(any(kw in log.lower() for kw in degradation_keywords) for log in active_logs) / len(active_logs)
-                    
-                    risk_pct = min(max(risk_score * 100, 8.0), 98.0)
-                    
-                    # Remaining Useful Life (RUL) Calculation
+                    # Real LSTM risk for the full log sequence
+                    full_resp = predict_sequence(active_logs)
+                    risk_pct = min(max(extract_risk_pct(full_resp), 0.0), 100.0)
+
+                    # Real risk after each prefix of logs (for the chart)
+                    trend = []
+                    for k in range(1, len(active_logs) + 1):
+                        try:
+                            trend.append(extract_risk_pct(predict_sequence(active_logs[:k])))
+                        except Exception:
+                            trend.append(None)  # API rejected a short prefix, leave a gap
+                    trend[-1] = risk_pct  # last point always equals the full-sequence result
+
+                    # Rule-based remaining time estimate from the real risk
                     estimated_days = max(1, int((100 - risk_pct) * 0.45))
                     estimated_hours = estimated_days * 24
 
                     risk_color = "#f87171" if risk_pct > 60 else "#fbbf24" if risk_pct > 30 else "#34d399"
-                    
+
                     st.session_state.machine_result = {
                         "machine_id": selected_machine,
                         "risk_pct": risk_pct,
                         "rul_days": estimated_days,
                         "rul_hours": estimated_hours,
                         "risk_color": risk_color,
-                        "total_logs": len(active_logs)
+                        "total_logs": len(active_logs),
+                        "trend": trend
                     }
                 except Exception as e:
                     st.error(f"Prediction Error: {e}")
@@ -1328,7 +1368,7 @@ elif selected_page == "Machine Risk":
                         <span style="color: #818cf8;">⏱</span>
                     </div>
                     <div class="stat-value">{m_res['rul_days']} Days</div>
-                    <div class="stat-sub">Approx. {m_res['rul_hours']} operating hours remaining</div>
+                    <div class="stat-sub">Rule-based estimate from model risk (~{m_res['rul_hours']} h)</div>
                 </div>
                 """
             )
@@ -1343,14 +1383,14 @@ elif selected_page == "Machine Risk":
                         <span style="color: {m_res['risk_color']};">⚡</span>
                     </div>
                     <div class="stat-value" style="color: {m_res['risk_color']};">{status_text}</div>
-                    <div class="stat-sub">Automated rule decision</div>
+                    <div class="stat-sub">Rule-based decision from model risk</div>
                 </div>
                 """
             )
 
         # Time-to-Failure Forecast Chart
         steps = [f"Log #{i+1}" for i in range(m_res['total_logs'])]
-        trend_data = [min(100.0, m_res['risk_pct'] * ((i + 1) / m_res['total_logs'])) for i in range(m_res['total_logs'])]
+        trend_data = m_res['trend']  # real per-prefix risk values from the API
 
         fig_trend = go.Figure()
         fig_trend.add_trace(go.Scatter(
