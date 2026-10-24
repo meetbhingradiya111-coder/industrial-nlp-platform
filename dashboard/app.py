@@ -1088,50 +1088,50 @@ if selected_page == "Dashboard":
     row1_col1, row1_col2, row1_col3 = st.columns(3)
 
     with row1_col1:
-        if st.button("Sample: No Failure", key="btn_green_nofail", use_container_width=True):
+        if st.button("Sample: No Failure", key="sample_nofail", use_container_width=True):
             st.session_state.log_input_text = "Pump inspected, no leaks or unusual sounds observed. All operating parameters within normal limits."
             st.rerun()
 
     with row1_col2:
-        if st.button("Sample: Pre-Failure Warning", key="btn_amber_prefail", use_container_width=True):
+        if st.button("Sample: Pre-Failure Warning", key="sample_prefail", use_container_width=True):
             st.session_state.log_input_text = "Minor thermal elevation recorded during high load cycle. Inspection recommended during next planned shutdown."
             st.rerun()
 
     with row1_col3:
-        if st.button("Sample: Bearing Failure", key="btn_red_bearing", use_container_width=True):
+        if st.button("Sample: Bearing Failure", key="sample_bearing", use_container_width=True):
             st.session_state.log_input_text = "High thermal signature recorded on drive motor shaft. Loud grinding noise detected in bearing assembly."
             st.rerun()
 
     row2_col1, row2_col2, row2_col3 = st.columns(3)
 
     with row2_col1:
-        if st.button("Sample: Electrical Fault", key="btn_red_electrical", use_container_width=True):
+        if st.button("Sample: Electrical Fault", key="sample_electrical", use_container_width=True):
             st.session_state.log_input_text = "Frequent voltage spikes and current fluctuations observed in main power supply unit causing breaker trips."
             st.rerun()
 
     with row2_col2:
-        if st.button("Sample: Lubrication Failure", key="btn_red_lube", use_container_width=True):
+        if st.button("Sample: Lubrication Failure", key="sample_lube", use_container_width=True):
             st.session_state.log_input_text = "Oil pressure drop in main gearbox reservoir. Low lubricant levels and fluid contamination detected."
             st.rerun()
 
     with row2_col3:
-        if st.button("Sample: Mechanical Fault", key="btn_red_mech", use_container_width=True):
+        if st.button("Sample: Mechanical Fault", key="sample_mech", use_container_width=True):
             st.session_state.log_input_text = "Severe shaft misalignment and excessive mechanical vibration detected across primary drive assembly."
             st.rerun()
     row3_col1, row3_col2, row3_col3 = st.columns(3)
 
     with row3_col1:
-        if st.button("Sample: Normal", key="btn_green_ae_normal", use_container_width=True):
+        if st.button("Sample: Normal", key="sample_ae_normal", use_container_width=True):
             st.session_state.log_input_text = AE_PRESETS["normal"]  # fill the log box
             st.rerun()
 
     with row3_col2:
-        if st.button("Sample: Borderline", key="btn_amber_ae_border", use_container_width=True):
+        if st.button("Sample: Borderline", key="sample_ae_border", use_container_width=True):
             st.session_state.log_input_text = AE_PRESETS["borderline"]
             st.rerun()
 
     with row3_col3:
-        if st.button("Sample: Anomaly", key="btn_red_ae_anomaly", use_container_width=True):
+        if st.button("Sample: Anomaly", key="sample_ae_anomaly", use_container_width=True):
             st.session_state.log_input_text = AE_PRESETS["anomaly"]
             st.rerun()
             
@@ -1336,12 +1336,13 @@ elif selected_page == "Machine Risk":
         st.session_state.fleet_data[selected_machine] = [""] * 10
 
     # Quick Presets for fast testing
-    preset_col1, preset_col2, preset_col3 = st.columns(3)
+    preset_col1, preset_col2 = st.columns(2)
+
     with preset_col1:
         if st.button(f"Populate 10 Healthy Logs ({selected_machine})", key="btn_green_healthy", use_container_width=True):
             healthy_seq = get_machine_logs(machine_idx, is_degrading=False)
             st.session_state.fleet_data[selected_machine] = healthy_seq
-            
+
             # Explicitly force Streamlit text widget keys to update immediately
             for idx, text in enumerate(healthy_seq):
                 st.session_state[f"{selected_machine}_log_{idx}"] = text
@@ -1349,9 +1350,9 @@ elif selected_page == "Machine Risk":
 
     with preset_col2:
         if st.button("Populate Best Demo Sequence", key="btn_blue_best", use_container_width=True):
-            st.session_state.fleet_data[selected_machine] = list(LSTM_BEST_SEQUENCE)  # store the sequence
+            st.session_state.fleet_data[selected_machine] = list(LSTM_BEST_SEQUENCE)
 
-            # Update each text box so it shows immediately
+            # Explicitly force Streamlit text widget keys to update immediately
             for idx, text in enumerate(LSTM_BEST_SEQUENCE):
                 st.session_state[f"{selected_machine}_log_{idx}"] = text
             st.rerun()
