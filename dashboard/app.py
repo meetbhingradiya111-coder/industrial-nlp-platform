@@ -17,7 +17,7 @@ SEQUENCE_URL = "http://industrial_api:8000/predict_sequence"
 
 st.set_page_config(
     page_title="PredictAI | Industrial Intelligence Console",
-    page_icon="⚙",
+    page_icon=None,
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -180,6 +180,28 @@ MACHINE_LOGS = {
             "Severe overheating and grinding noise across components, immediate inspection recommended.",
         ],
     },
+}
+# ============================================================
+# BEST DEMO PRESETS
+# ============================================================
+
+LSTM_BEST_SEQUENCE = [
+    "Bearing assembly checked, operating smoothly.",
+    "Slight vibration noticed near bearing during inspection.",
+    "Minor noise observed from bearing during operation.",
+    "Bearing temperature slightly above normal, monitoring closely.",
+    "Increasing vibration detected on bearing during operation.",
+    "Unusual bearing noise persists despite lubrication.",
+    "Abnormal bearing noise detected, excessive vibration observed.",
+    "Bearing temperature increasing rapidly, grinding noise now audible.",
+    "Severe grinding noise and overheating at bearing, vibration worsening.",
+    "Severe bearing overheating and grinding noise, immediate inspection recommended.",
+]
+
+AE_PRESETS = {
+    "normal": "Technician report: Routine check completed on gearbox. No issues found.",
+    "borderline": "Alignment within normal range on coupling.",
+    "anomaly": "High thermal signature recorded on drive motor shaft. Loud grinding noise detected in bearing assembly.",
 }
 
 def get_machine_logs(machine_idx, is_degrading=False):
@@ -573,6 +595,44 @@ button[kind="primary"] {
     color: #ffffff !important;
 }
 
+/* ---------------- TINTED ACTION BUTTONS ---------------- */
+[class*="st-key-btn_green"] button {
+    background: rgba(52, 211, 153, 0.12) !important;
+    border: 1px solid rgba(52, 211, 153, 0.45) !important;
+    color: #34d399 !important;
+}
+[class*="st-key-btn_green"] button:hover {
+    background: rgba(52, 211, 153, 0.22) !important;
+    box-shadow: 0 6px 20px rgba(52, 211, 153, 0.2) !important;
+}
+[class*="st-key-btn_amber"] button {
+    background: rgba(251, 191, 36, 0.12) !important;
+    border: 1px solid rgba(251, 191, 36, 0.45) !important;
+    color: #fbbf24 !important;
+}
+[class*="st-key-btn_amber"] button:hover {
+    background: rgba(251, 191, 36, 0.22) !important;
+    box-shadow: 0 6px 20px rgba(251, 191, 36, 0.2) !important;
+}
+[class*="st-key-btn_red"] button {
+    background: rgba(248, 113, 113, 0.12) !important;
+    border: 1px solid rgba(248, 113, 113, 0.45) !important;
+    color: #f87171 !important;
+}
+[class*="st-key-btn_red"] button:hover {
+    background: rgba(248, 113, 113, 0.22) !important;
+    box-shadow: 0 6px 20px rgba(248, 113, 113, 0.2) !important;
+}
+[class*="st-key-btn_blue"] button {
+    background: rgba(99, 102, 241, 0.12) !important;
+    border: 1px solid rgba(99, 102, 241, 0.45) !important;
+    color: #a5b4fc !important;
+}
+[class*="st-key-btn_blue"] button:hover {
+    background: rgba(99, 102, 241, 0.22) !important;
+    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.2) !important;
+}
+
 textarea, input {
     background: rgba(10, 14, 23, 0.8) !important;
     color: #f1f5f9 !important;
@@ -737,22 +797,29 @@ def get_anomaly(result):
     return bool(val)
 
 
+def hex_to_rgba(color, alpha):
+    # Convert a #rrggbb color into an rgba() string with the given opacity
+    color = color.lstrip("#")
+    r, g, b = int(color[0:2], 16), int(color[2:4], 16), int(color[4:6], 16)
+    return f"rgba({r}, {g}, {b}, {alpha})"
+
+
 def get_condition(result):
     if not result:
-        return ("Idle", "Awaiting log telemetry input.", "#64748b", "⚙")
+        return ("Idle", "Awaiting log telemetry input.", "#64748b", "●")
     if get_anomaly(result):
         risk = get_risk(result).lower()
         if "critical" in risk:
-            return ("Critical Risk", "Immediate intervention recommended.", "#f87171", "🚨")
-        return ("Anomaly Flagged", "Unusual component behavior detected.", "#fbbf24", "⚠️")
+            return ("Critical Risk", "Immediate intervention recommended.", "#f87171", "●")
+        return ("Anomaly Flagged", "Unusual component behavior detected.", "#fbbf24", "●")
     
     risk = get_risk(result).lower()
     if "critical" in risk:
-        return ("Critical Risk", "Immediate intervention recommended.", "#f87171", "🚨")
+        return ("Critical Risk", "Immediate intervention recommended.", "#f87171", "●")
     if "warning" in risk or "moderate" in risk:
-        return ("Caution Required", "Monitor operating parameters closely.", "#fbbf24", "👁")
+        return ("Caution Required", "Monitor operating parameters closely.", "#fbbf24", "●")
     
-    return ("Optimal Operating State", "Equipment functioning within baseline parameters.", "#34d399", "✓")
+    return ("Optimal Operating State", "Equipment functioning within baseline parameters.", "#34d399", "●")
 
 
 def get_recommendation(result):
@@ -794,7 +861,7 @@ with st.sidebar:
     render_html(
         """
         <div class="brand-header">
-            <div class="brand-logo">⚙</div>
+            <div class="brand-logo">P</div>
             <div>
                 <div class="brand-name">Predict<span>AI</span></div>
                 <div class="brand-subtitle">Enterprise Diagnostics</div>
@@ -861,7 +928,7 @@ if selected_page == "Dashboard":
     render_html(
         f"""
         <div class="stat-grid">
-            <div class="stat-card">
+            <div class="stat-card" style="background: {hex_to_rgba(cond_color, 0.10)}; border: 1px solid {hex_to_rgba(cond_color, 0.40)};">
                 <div class="stat-header">
                     <span class="stat-label">Equipment Condition</span>
                     <span style="color: {cond_color};">{cond_symbol}</span>
@@ -870,7 +937,7 @@ if selected_page == "Dashboard":
                 <div class="stat-sub">{cond_desc}</div>
             </div>
 
-            <div class="stat-card">
+            <div class="stat-card" style="background: {hex_to_rgba(risk_col, 0.10)}; border: 1px solid {hex_to_rgba(risk_col, 0.40)};">
                 <div class="stat-header">
                     <span class="stat-label">Assessed Risk Level</span>
                     <span style="color: {risk_col};">●</span>
@@ -879,7 +946,7 @@ if selected_page == "Dashboard":
                 <div class="stat-sub">Multi-layer risk classification</div>
             </div>
 
-            <div class="stat-card">
+            <div class="stat-card" style="background: {hex_to_rgba(anom_col, 0.10)}; border: 1px solid {hex_to_rgba(anom_col, 0.40)};">
                 <div class="stat-header">
                     <span class="stat-label">Autoencoder Signal</span>
                     <span style="color: {anom_col};">●</span>
@@ -891,7 +958,7 @@ if selected_page == "Dashboard":
             <div class="stat-card">
                 <div class="stat-header">
                     <span class="stat-label">Model Confidence</span>
-                    <span style="color: #818cf8;">⚡</span>
+                    <span style="color: #818cf8;">●</span>
                 </div>
                 <div class="stat-value">{conf_val:.1f}%</div>
                 <div class="stat-sub">DistilBERT probability score</div>
@@ -1021,37 +1088,53 @@ if selected_page == "Dashboard":
     row1_col1, row1_col2, row1_col3 = st.columns(3)
 
     with row1_col1:
-        if st.button("📌 Sample: No Failure", use_container_width=True):
+        if st.button("Sample: No Failure", key="btn_green_nofail", use_container_width=True):
             st.session_state.log_input_text = "Pump inspected, no leaks or unusual sounds observed. All operating parameters within normal limits."
             st.rerun()
 
     with row1_col2:
-        if st.button("📌 Sample: Pre-Failure Warning", use_container_width=True):
+        if st.button("Sample: Pre-Failure Warning", key="btn_amber_prefail", use_container_width=True):
             st.session_state.log_input_text = "Minor thermal elevation recorded during high load cycle. Inspection recommended during next planned shutdown."
             st.rerun()
 
     with row1_col3:
-        if st.button("📌 Sample: Bearing Failure", use_container_width=True):
+        if st.button("Sample: Bearing Failure", key="btn_red_bearing", use_container_width=True):
             st.session_state.log_input_text = "High thermal signature recorded on drive motor shaft. Loud grinding noise detected in bearing assembly."
             st.rerun()
 
     row2_col1, row2_col2, row2_col3 = st.columns(3)
 
     with row2_col1:
-        if st.button("📌 Sample: Electrical Fault", use_container_width=True):
+        if st.button("Sample: Electrical Fault", key="btn_red_electrical", use_container_width=True):
             st.session_state.log_input_text = "Frequent voltage spikes and current fluctuations observed in main power supply unit causing breaker trips."
             st.rerun()
 
     with row2_col2:
-        if st.button("📌 Sample: Lubrication Failure", use_container_width=True):
+        if st.button("Sample: Lubrication Failure", key="btn_red_lube", use_container_width=True):
             st.session_state.log_input_text = "Oil pressure drop in main gearbox reservoir. Low lubricant levels and fluid contamination detected."
             st.rerun()
 
     with row2_col3:
-        if st.button("📌 Sample: Mechanical Fault", use_container_width=True):
+        if st.button("Sample: Mechanical Fault", key="btn_red_mech", use_container_width=True):
             st.session_state.log_input_text = "Severe shaft misalignment and excessive mechanical vibration detected across primary drive assembly."
             st.rerun()
+    row3_col1, row3_col2, row3_col3 = st.columns(3)
 
+    with row3_col1:
+        if st.button("Sample: Normal", key="btn_green_ae_normal", use_container_width=True):
+            st.session_state.log_input_text = AE_PRESETS["normal"]  # fill the log box
+            st.rerun()
+
+    with row3_col2:
+        if st.button("Sample: Borderline", key="btn_amber_ae_border", use_container_width=True):
+            st.session_state.log_input_text = AE_PRESETS["borderline"]
+            st.rerun()
+
+    with row3_col3:
+        if st.button("Sample: Anomaly", key="btn_red_ae_anomaly", use_container_width=True):
+            st.session_state.log_input_text = AE_PRESETS["anomaly"]
+            st.rerun()
+            
     log_input = st.text_area(
         "Log Input",
         key="log_input_text",
@@ -1174,7 +1257,7 @@ elif selected_page == "AI Log Analyzer":
             <div class="glass-panel">
                 <div class="panel-title">Autoencoder Anomaly Detection Engine</div>
                 <div style="font-size: 1.1rem; font-weight: 700; color: {anom_color}; margin-bottom: 16px;">
-                    {"⚠️ Anomaly Detected (Unusual Signal Dynamics)" if is_anom else "✓ Operations Normal (Signal Within Model Threshold)"}
+                    {"Anomaly Detected (Unusual Signal Dynamics)" if is_anom else "Operations Normal (Signal Within Model Threshold)"}
                 </div>
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
@@ -1253,9 +1336,9 @@ elif selected_page == "Machine Risk":
         st.session_state.fleet_data[selected_machine] = [""] * 10
 
     # Quick Presets for fast testing
-    preset_col1, preset_col2 = st.columns(2)
+    preset_col1, preset_col2, preset_col3 = st.columns(3)
     with preset_col1:
-        if st.button(f"⚡ Populate 10 Healthy Logs ({selected_machine})", use_container_width=True):
+        if st.button(f"Populate 10 Healthy Logs ({selected_machine})", key="btn_green_healthy", use_container_width=True):
             healthy_seq = get_machine_logs(machine_idx, is_degrading=False)
             st.session_state.fleet_data[selected_machine] = healthy_seq
             
@@ -1265,17 +1348,16 @@ elif selected_page == "Machine Risk":
             st.rerun()
 
     with preset_col2:
-        if st.button(f"⚠️ Populate 10 Degrading Logs ({selected_machine})", use_container_width=True):
-            degrading_seq = get_machine_logs(machine_idx, is_degrading=True)
-            st.session_state.fleet_data[selected_machine] = degrading_seq
-            
-            # Explicitly force Streamlit text widget keys to update immediately
-            for idx, text in enumerate(degrading_seq):
+        if st.button("Populate Best Demo Sequence", key="btn_blue_best", use_container_width=True):
+            st.session_state.fleet_data[selected_machine] = list(LSTM_BEST_SEQUENCE)  # store the sequence
+
+            # Update each text box so it shows immediately
+            for idx, text in enumerate(LSTM_BEST_SEQUENCE):
                 st.session_state[f"{selected_machine}_log_{idx}"] = text
             st.rerun()
 
     # Expandable 10 Log Inputs
-    with st.expander(f"📝 View / Edit 10 Sequence Logs for {selected_machine}", expanded=True):
+    with st.expander(f"View / Edit 10 Sequence Logs for {selected_machine}", expanded=True):
         updated_logs = []
         grid_col1, grid_col2 = st.columns(2, gap="medium")
         
@@ -1298,7 +1380,7 @@ elif selected_page == "Machine Risk":
         st.session_state.fleet_data[selected_machine] = updated_logs
 
     # ---------------- 3. PREDICTION & FAILURE TIMELINE ----------------
-    if st.button(f"🚀 Predict Failure Timeline for {selected_machine}", type="primary", use_container_width=True):
+    if st.button(f"Predict Failure Timeline for {selected_machine}", type="primary", use_container_width=True):
         active_logs = [l for l in st.session_state.fleet_data[selected_machine] if l.strip()]
         
         if len(active_logs) < 3:
@@ -1349,7 +1431,7 @@ elif selected_page == "Machine Risk":
         with res_col1:
             render_html(
                 f"""
-                <div class="stat-card">
+                <div class="stat-card" style="background: {hex_to_rgba(m_res['risk_color'], 0.10)}; border: 1px solid {hex_to_rgba(m_res['risk_color'], 0.40)};">
                     <div class="stat-header">
                         <span class="stat-label">Failure Probability</span>
                         <span style="color: {m_res['risk_color']};">●</span>
@@ -1363,10 +1445,10 @@ elif selected_page == "Machine Risk":
         with res_col2:
             render_html(
                 f"""
-                <div class="stat-card">
+                <div class="stat-card" style="background: {hex_to_rgba(m_res['risk_color'], 0.10)}; border: 1px solid {hex_to_rgba(m_res['risk_color'], 0.40)};">
                     <div class="stat-header">
                         <span class="stat-label">Estimated Time To Failure</span>
-                        <span style="color: #818cf8;">⏱</span>
+                        <span style="color: #818cf8;">●</span>
                     </div>
                     <div class="stat-value">{m_res['rul_days']} Days</div>
                     <div class="stat-sub">Rule-based estimate from model risk (~{m_res['rul_hours']} h)</div>
@@ -1378,10 +1460,10 @@ elif selected_page == "Machine Risk":
             status_text = "CRITICAL ACTION" if m_res['risk_pct'] > 60 else "SCHEDULE CHECK" if m_res['risk_pct'] > 30 else "HEALTHY"
             render_html(
                 f"""
-                <div class="stat-card">
+                <div class="stat-card" style="background: {hex_to_rgba(m_res['risk_color'], 0.10)}; border: 1px solid {hex_to_rgba(m_res['risk_color'], 0.40)};">
                     <div class="stat-header">
                         <span class="stat-label">Maintenance Verdict</span>
-                        <span style="color: {m_res['risk_color']};">⚡</span>
+                        <span style="color: {m_res['risk_color']};">●</span>
                     </div>
                     <div class="stat-value" style="color: {m_res['risk_color']};">{status_text}</div>
                     <div class="stat-sub">Rule-based decision from model risk</div>
@@ -1485,27 +1567,27 @@ elif selected_page == "Model Architecture":
         <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 24px;">
             <div class="glass-panel" style="text-align: center; padding: 18px 10px;">
                 <div style="color: #818cf8; font-size: 0.65rem; font-weight: 800;">STEP 01</div>
-                <div style="font-size: 1.5rem; margin: 8px 0;">📄</div>
+                <div style="height: 2px; width: 28px; background: #6366f1; margin: 12px auto;"></div>
                 <div style="font-size: 0.75rem; font-weight: 600; color: #f8fafc;">Text Log Input</div>
             </div>
             <div class="glass-panel" style="text-align: center; padding: 18px 10px;">
                 <div style="color: #818cf8; font-size: 0.65rem; font-weight: 800;">STEP 02</div>
-                <div style="font-size: 1.5rem; margin: 8px 0;">🧠</div>
+                <div style="height: 2px; width: 28px; background: #6366f1; margin: 12px auto;"></div>
                 <div style="font-size: 0.75rem; font-weight: 600; color: #f8fafc;">DistilBERT NLP</div>
             </div>
             <div class="glass-panel" style="text-align: center; padding: 18px 10px;">
                 <div style="color: #818cf8; font-size: 0.65rem; font-weight: 800;">STEP 03</div>
-                <div style="font-size: 1.5rem; margin: 8px 0;">🔄</div>
+                <div style="height: 2px; width: 28px; background: #6366f1; margin: 12px auto;"></div>
                 <div style="font-size: 0.75rem; font-weight: 600; color: #f8fafc;">Autoencoder</div>
             </div>
             <div class="glass-panel" style="text-align: center; padding: 18px 10px;">
                 <div style="color: #818cf8; font-size: 0.65rem; font-weight: 800;">STEP 04</div>
-                <div style="font-size: 1.5rem; margin: 8px 0;">📈</div>
+                <div style="height: 2px; width: 28px; background: #6366f1; margin: 12px auto;"></div>
                 <div style="font-size: 0.75rem; font-weight: 600; color: #f8fafc;">LSTM Engine</div>
             </div>
             <div class="glass-panel" style="text-align: center; padding: 18px 10px;">
                 <div style="color: #818cf8; font-size: 0.65rem; font-weight: 800;">STEP 05</div>
-                <div style="font-size: 1.5rem; margin: 8px 0;">✓</div>
+                <div style="height: 2px; width: 28px; background: #6366f1; margin: 12px auto;"></div>
                 <div style="font-size: 0.75rem; font-weight: 600; color: #f8fafc;">Prescriptive Action</div>
             </div>
         </div>
