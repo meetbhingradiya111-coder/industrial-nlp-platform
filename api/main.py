@@ -196,7 +196,7 @@ def get_anomaly_score(log_text: str):
 
 
 # ─────────────────────────────────────
-# 8b. DERIVED INSIGHTS (rule-based, not model predictions)
+# 8b. DERIVED INSIGHTS & VALIDATION
 # ─────────────────────────────────────
 
 COMPONENT_KEYWORDS = {
@@ -216,6 +216,22 @@ COMPONENT_KEYWORDS = {
 
 HIGH_SEVERITY_KEYWORDS = ['spark', 'fire', 'smoke', 'broken', 'leak', 'overheat', 'excessive', 'seized', 'cracked']
 MEDIUM_SEVERITY_KEYWORDS = ['wear', 'noise', 'vibration', 'minor', 'monitor', 'elevated', 'drift', 'play', 'degraded']
+
+MAINTENANCE_KEYWORDS = [
+    'inspection', 'maintenance', 'check', 'sensor', 'pump', 'bearing', 'valve', 
+    'gearbox', 'motor', 'shaft', 'coupling', 'panel', 'conveyor', 'machine', 
+    'hydraulic', 'belt', 'vibration', 'noise', 'temperature', 'pressure', 'leak', 
+    'wear', 'operating', 'normal', 'status', 'reading', 'service', 'oil', 'voltage',
+    'fault', 'warning', 'failure', 'routine', 'shift', 'technician', 'report',
+    'observed', 'noted', 'abnormal', 'stable', 'performance', 'range', 'limits',
+    'gear', 'fluid', 'rpm', 'current', 'spark', 'smoke', 'plc'
+]
+
+def is_valid_maintenance_log(text: str) -> bool:
+    """Validates if input text resembles a maintenance log"""
+    text_lower = text.lower()
+    matches = sum(1 for kw in MAINTENANCE_KEYWORDS if kw in text_lower)
+    return matches >= 1
 
 
 def detect_component(log_text: str) -> str:
@@ -289,7 +305,10 @@ def predict(request: LogRequest):
     target_log = log_text_val if log_text_val else clean_log_val
 
     if not target_log:
-        raise HTTPException(status_code=400, detail="log_text or clean_log cannot be empty")
+        raise HTTPException(status_code=400, detail="log_text cannot be empty")
+
+    if not is_valid_maintenance_log(target_log):
+        raise HTTPException(status_code=400, detail="Please enter a valid maintenance log")
 
     failure_type, confidence = predict_failure_type(target_log)
     error, is_anomaly, anomaly_status = get_anomaly_score(target_log)
