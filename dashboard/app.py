@@ -81,16 +81,16 @@ MACHINE_LOGS = {
     },
     1: {  # Machine #2 (M-102)
         "healthy": [
-            "Bearing assembly checked, no unusual noise.",
-            "Motor in good condition, stable readings throughout.",
-            "Scheduled maintenance completed successfully.",
-            "Valve checked, no leaks observed.",
-            "Pump operating within normal range.",
-            "Routine check completed on bearing. No issues found.",
-            "Gearbox inspected, no abnormalities detected.",
-            "Motor checked, no unusual sounds observed.",
-            "Scheduled maintenance completed successfully.",
-            "Valve inspected visually. No abnormalities detected.",
+            "a morning inspection round was carried out on the sensor today belt tension along with other key indicators remained within the expected normal range and no unusual noise leakage or mechanical irregularities were observed during the inspection confirming stable operating condition",
+                "following the preventive maintenance the sensor was confirmed to be operating normally all monitored parameters including running temperature and vibration levels were within standard limits and no corrective action was required at this time",
+                "hydraulic system functioning normally during morning inspection round",
+                "as part of the end of shift inspection a detailed check of the sensor was conducted the equipment showed consistent stable performance throughout the inspection with no abnormal readings sounds or signs of mechanical stress noted by the technician",
+                "inspection of the bearing during preventive maintenance showed stable operation with no signs of wear or irregularity",
+                "the bearing was monitored closely during monthly maintenance review oil level levels stayed consistent throughout and the technician reported no unusual sounds vibrations or signs of wear requiring further attention at this stage",
+                "no concerns after weekly system check on coupling",
+                "following the end of shift inspection the gearbox was confirmed to be operating normally all monitored parameters including rotational speed were within standard limits and no corrective action was required at this time",
+                "routine scheduled service completed no issues found on gearbox",
+                "no concerns after safety compliance check on motor",
         ],
         "degrading": [
             "Bearing assembly checked, no unusual noise.",
@@ -107,16 +107,16 @@ MACHINE_LOGS = {
     },
     2: {  # Machine #3 (M-103)
         "healthy": [
-            "Motor reviewed and confirmed operating within expected limits.",
-            "Valve inspected visually. No abnormalities detected.",
-            "Scheduled maintenance completed successfully.",
-            "Pump inspected, no leaks or unusual sounds observed.",
-            "Bearing checked, operating smoothly.",
-            "Routine check completed on motor. No issues found.",
-            "Gearbox operating smoothly, no unusual sounds detected.",
-            "Valve checked during routine inspection. No issues found.",
-            "Scheduled maintenance completed successfully.",
-            "Pump checked, no unusual sounds observed.",
+            "a morning inspection round was carried out on the sensor today belt tension along with other key indicators remained within the expected normal range and no unusual noise leakage or mechanical irregularities were observed during the inspection confirming stable operating condition",
+                "following the preventive maintenance the sensor was confirmed to be operating normally all monitored parameters including running temperature and vibration levels were within standard limits and no corrective action was required at this time",
+                "hydraulic system functioning normally during morning inspection round",
+                "as part of the end of shift inspection a detailed check of the sensor was conducted the equipment showed consistent stable performance throughout the inspection with no abnormal readings sounds or signs of mechanical stress noted by the technician",
+                "inspection of the bearing during preventive maintenance showed stable operation with no signs of wear or irregularity",
+                "the bearing was monitored closely during monthly maintenance review oil level levels stayed consistent throughout and the technician reported no unusual sounds vibrations or signs of wear requiring further attention at this stage",
+                "no concerns after weekly system check on coupling",
+                "following the end of shift inspection the gearbox was confirmed to be operating normally all monitored parameters including rotational speed were within standard limits and no corrective action was required at this time",
+                "routine scheduled service completed no issues found on gearbox",
+                "no concerns after safety compliance check on motor",
         ],
         "degrading": [
             "Motor reviewed and confirmed operating within expected limits.",
@@ -133,16 +133,16 @@ MACHINE_LOGS = {
     },
     3: {  # Machine #4 (M-104)
         "healthy": [
-            "Valve inspected visually. No abnormalities detected.",
-            "Pump operating within normal range.",
-            "Scheduled maintenance completed successfully.",
-            "Gearbox checked during routine inspection. No issues found.",
-            "Motor inspected, no unusual sounds observed.",
-            "Routine check completed on valve. No issues found.",
-            "Bearing assembly checked, operating smoothly.",
-            "Pump inspected, no leaks observed.",
-            "Scheduled maintenance completed successfully.",
-            "Gearbox inspected, no abnormalities detected.",
+            "a morning inspection round was carried out on the sensor today belt tension along with other key indicators remained within the expected normal range and no unusual noise leakage or mechanical irregularities were observed during the inspection confirming stable operating condition",
+                "following the preventive maintenance the sensor was confirmed to be operating normally all monitored parameters including running temperature and vibration levels were within standard limits and no corrective action was required at this time",
+                "hydraulic system functioning normally during morning inspection round",
+                "as part of the end of shift inspection a detailed check of the sensor was conducted the equipment showed consistent stable performance throughout the inspection with no abnormal readings sounds or signs of mechanical stress noted by the technician",
+                "inspection of the bearing during preventive maintenance showed stable operation with no signs of wear or irregularity",
+                "the bearing was monitored closely during monthly maintenance review oil level levels stayed consistent throughout and the technician reported no unusual sounds vibrations or signs of wear requiring further attention at this stage",
+                "no concerns after weekly system check on coupling",
+                "following the end of shift inspection the gearbox was confirmed to be operating normally all monitored parameters including rotational speed were within standard limits and no corrective action was required at this time",
+                "routine scheduled service completed no issues found on gearbox",
+                "no concerns after safety compliance check on motor",
         ],
         "degrading": [
             "Valve inspected visually. No abnormalities detected.",
@@ -159,16 +159,16 @@ MACHINE_LOGS = {
     },
     4: {  # Machine #5 (M-105)
         "healthy": [
-            "Pump inspected, no leaks or unusual sounds observed.",
-            "Gearbox checked during routine inspection. No issues found.",
-            "Scheduled maintenance completed successfully.",
-            "Bearing inspected, no abnormalities detected.",
-            "Valve checked, no leaks observed.",
-            "Routine check completed on pump. No issues found.",
-            "Motor in good condition, stable readings throughout.",
-            "Gearbox operating smoothly, no unusual sounds detected.",
-            "Scheduled maintenance completed successfully.",
-            "Bearing assembly checked, operating smoothly.",
+            "a morning inspection round was carried out on the sensor today belt tension along with other key indicators remained within the expected normal range and no unusual noise leakage or mechanical irregularities were observed during the inspection confirming stable operating condition",
+                "following the preventive maintenance the sensor was confirmed to be operating normally all monitored parameters including running temperature and vibration levels were within standard limits and no corrective action was required at this time",
+                "hydraulic system functioning normally during morning inspection round",
+                "as part of the end of shift inspection a detailed check of the sensor was conducted the equipment showed consistent stable performance throughout the inspection with no abnormal readings sounds or signs of mechanical stress noted by the technician",
+                "inspection of the bearing during preventive maintenance showed stable operation with no signs of wear or irregularity",
+                "the bearing was monitored closely during monthly maintenance review oil level levels stayed consistent throughout and the technician reported no unusual sounds vibrations or signs of wear requiring further attention at this stage",
+                "no concerns after weekly system check on coupling",
+                "following the end of shift inspection the gearbox was confirmed to be operating normally all monitored parameters including rotational speed were within standard limits and no corrective action was required at this time",
+                "routine scheduled service completed no issues found on gearbox",
+                "no concerns after safety compliance check on motor",
         ],
         "degrading": [
             "Pump inspected, no leaks or unusual sounds observed.",
@@ -1315,7 +1315,7 @@ elif selected_page == "Machine Risk":
             st.rerun()
 
     with preset_col2:
-        if st.button("Populate Best Demo Sequence", key="btn_blue_best", use_container_width=True):
+        if st.button("Populate 10 Unhealthy Logs", key="btn_blue_best", use_container_width=True):
             st.session_state.fleet_data[selected_machine] = list(LSTM_BEST_SEQUENCE)
 
             for idx, text in enumerate(LSTM_BEST_SEQUENCE):
