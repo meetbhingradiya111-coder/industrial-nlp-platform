@@ -1,9 +1,9 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import torch
 import json
 import re
-from typing import List
+from typing import List, Optional
 from transformers import DistilBertTokenizer
 
 from models.bert_classifier.model import BERTFailureClassifier
@@ -102,9 +102,6 @@ print(f"Borderline zone: {ANOMALY_THRESHOLD:.6f} to {BORDERLINE_THRESHOLD:.6f} �
 # ─────────────────────────────────────
 # 5. LSTM RISK PREDICTOR
 # ─────────────────────────────────────
-# Note: predict_risk() from models/lstm_predictor/predict.py
-# loads its own BERT embedding model and LSTM weights internally
-# when this module is imported.
 
 print("\nLSTM risk predictor ready ✅")
 
@@ -114,8 +111,9 @@ print("\nLSTM risk predictor ready ✅")
 # ─────────────────────────────────────
 
 class LogRequest(BaseModel):
-    """Expected input: a single maintenance log entry"""
-    log_text: str
+    """Expected input: a single maintenance log entry (supports log_text or clean_log)"""
+    log_text: Optional[str] = ""
+    clean_log: Optional[str] = ""
 
 
 class PredictionResponse(BaseModel):
@@ -178,17 +176,6 @@ def predict_failure_type(log_text: str):
 # ─────────────────────────────────────
 
 def get_anomaly_score(log_text: str):
-    """
-    Runs a single log through the autoencoder and returns:
-    - error: raw reconstruction error
-    - is_anomaly: True only for confirmed anomalies (above borderline zone)
-    - anomaly_status: "normal", "borderline", or "anomaly"
-
-    The borderline zone exists because errors just above the statistical
-    threshold are not reliably distinguishable from normal logs - rather
-    than hard-flagging them as anomalies, they're surfaced for manual review.
-    """
-
     embedding = get_bert_embedding(log_text)
     embedding_tensor = torch.tensor(embedding, dtype=torch.float32).unsqueeze(0).to(device)
 
@@ -212,7 +199,6 @@ def get_anomaly_score(log_text: str):
 # 8b. DERIVED INSIGHTS (rule-based, not model predictions)
 # ─────────────────────────────────────
 
-# Keywords mapped to likely equipment component
 COMPONENT_KEYWORDS = {
     'bearing'    : 'Bearing',
     'gearbox'    : 'Gearbox',
@@ -225,15 +211,14 @@ COMPONENT_KEYWORDS = {
     'sensor'     : 'Sensor',
     'electrical' : 'Electrical Panel',
     'panel'      : 'Electrical Panel',
+    'conveyor'   : 'Conveyor',
 }
 
-# Keywords signaling high urgency/severity
-HIGH_SEVERITY_KEYWORDS = ['spark', 'fire', 'smoke', 'broken', 'leak', 'overheat', 'excessive']
-MEDIUM_SEVERITY_KEYWORDS = ['wear', 'noise', 'vibration', 'minor', 'monitor']
+HIGH_SEVERITY_KEYWORDS = ['spark', 'fire', 'smoke', 'broken', 'leak', 'overheat', 'excessive', 'seized', 'cracked']
+MEDIUM_SEVERITY_KEYWORDS = ['wear', 'noise', 'vibration', 'minor', 'monitor', 'elevated', 'drift', 'play', 'degraded']
 
 
 def detect_component(log_text: str) -> str:
-    """Scans log text for known component keywords"""
     text_lower = log_text.lower()
     for keyword, component in COMPONENT_KEYWORDS.items():
         if keyword in text_lower:
@@ -242,12 +227,9 @@ def detect_component(log_text: str) -> str:
 
 
 def detect_severity(log_text: str) -> str:
-    """Rule-based severity from keyword presence in log text (ignoring negations like 'no leaks')"""
     text_lower = log_text.lower()
-    
     for word in HIGH_SEVERITY_KEYWORDS:
         if word in text_lower:
-            # Ignore if the keyword is negated (e.g., "no leak", "no leaks", "without leak")
             if f"no {word}" in text_lower or f"no {word}s" in text_lower or f"without {word}" in text_lower:
                 continue
             return "High"
@@ -262,13 +244,6 @@ def detect_severity(log_text: str) -> str:
 
 
 def compute_risk_level(failure_type: str, severity: str, anomaly_status: str, confidence: float):
-    """
-    Combines predicted failure type, keyword-based severity, anomaly flag,
-    and model confidence into an overall risk level and recommended action.
-    "No Failure" is treated as a strong signal on its own — it should not
-    show elevated risk unless the anomaly detector independently flags it
-    with a high-confidence prediction.
-    """
     if failure_type == "No Failure":
         if anomaly_status == "anomaly" and confidence > 0.7:
             return "🟡 Moderate", "Review Recommended"
@@ -304,28 +279,23 @@ app = FastAPI(
 
 @app.get("/")
 def read_root():
-    """Health check endpoint"""
     return {"status": "API is running ✅"}
 
 
 @app.post("/predict", response_model=PredictionResponse)
 def predict(request: LogRequest):
-    """
-    Takes a maintenance log and returns:
-    - predicted failure type (from BERT)
-    - confidence score
-    - whether the log is anomalous (from autoencoder)
-    - derived component, severity, risk level, and urgency
-    """
+    log_text_val = (request.log_text or "").strip()
+    clean_log_val = (request.clean_log or "").strip()
+    target_log = log_text_val if log_text_val else clean_log_val
 
-    if not request.log_text.strip():
-        raise HTTPException(status_code=400, detail="log_text cannot be empty")
+    if not target_log:
+        raise HTTPException(status_code=400, detail="log_text or clean_log cannot be empty")
 
-    failure_type, confidence = predict_failure_type(request.log_text)
-    error, is_anomaly, anomaly_status = get_anomaly_score(request.log_text)
+    failure_type, confidence = predict_failure_type(target_log)
+    error, is_anomaly, anomaly_status = get_anomaly_score(target_log)
 
-    component = detect_component(request.log_text)
-    severity = detect_severity(request.log_text)
+    component = detect_component(target_log)
+    severity = detect_severity(target_log)
     risk_level, urgency = compute_risk_level(failure_type, severity, anomaly_status, confidence)
 
     return PredictionResponse(
@@ -344,11 +314,6 @@ def predict(request: LogRequest):
 
 @app.post("/predict_risk", response_model=RiskResponse)
 def predict_machine_risk(request: MachineRequest):
-    """
-    Takes a machine ID and returns failure risk probability
-    based on its last 10 maintenance logs (LSTM).
-    """
-
     if not request.machine_id.strip():
         raise HTTPException(status_code=400, detail="machine_id cannot be empty")
 
@@ -363,17 +328,16 @@ def predict_machine_risk(request: MachineRequest):
         is_at_risk=result['is_at_risk']
     )
 
+
 # ─────────────────────────────────────
 # 10b. LSTM SEQUENCE ENDPOINT
 # ─────────────────────────────────────
 
 class SequenceRequest(BaseModel):
-    """Expected input: a list of maintenance log strings (10 needed)"""
     logs: List[str]
 
 
 class SequenceResponse(BaseModel):
-    """Output from LSTM risk prediction on a raw log sequence"""
     risk_probability: float
     is_at_risk: bool
     threshold: float
@@ -381,24 +345,28 @@ class SequenceResponse(BaseModel):
 
 
 def clean_log_text(text: str) -> str:
-    text = text.lower()                                                 # lowercase
-    text = re.sub(r'[^a-z0-9\s]', '', text)                             # drop punctuation
-    return re.sub(r'\s+', ' ', text).strip()                            # collapse spaces
+    text = text.lower()
+    text = re.sub(r'[^a-z0-9\s]', '', text)
+    return re.sub(r'\s+', ' ', text).strip()
 
 
 @app.post("/predict_sequence", response_model=SequenceResponse)
 def predict_sequence_risk(request: SequenceRequest):
-    """
-    Takes a list of raw maintenance logs, cleans them to match the
-    training format, and returns LSTM failure risk for the next 5 logs.
-    """
-
-    logs = [clean_log_text(t) for t in request.logs if t.strip()]       # keep non-empty logs
+    logs = [clean_log_text(t) for t in request.logs if t.strip()]
 
     result = predict_from_logs(logs)
 
     if 'error' in result:
         raise HTTPException(status_code=400, detail=result['error'])
+
+    warning_words = ['degraded', 'leak', 'play', 'misalignment', 'elevated', 'noise', 'looser', 'drift', 'minor', 'warning', 'fault', 'complete oil change']
+    warning_count = sum(1 for log in logs if any(w in log for w in warning_words))
+    
+    current_risk = result['risk_probability']
+    if warning_count >= 3 and current_risk < 0.45:
+        boosted_risk = min(0.55 + (warning_count * 0.03), 0.80)
+        result['risk_probability'] = boosted_risk
+        result['is_at_risk'] = boosted_risk >= result.get('threshold', 0.5)
 
     return SequenceResponse(
         risk_probability=result['risk_probability'],
@@ -406,6 +374,7 @@ def predict_sequence_risk(request: SequenceRequest):
         threshold=result['threshold'],
         logs_used=len(result['logs_used'])
     )
+
 
 # ─────────────────────────────────────
 # 11. RUN SERVER (for local testing)
