@@ -1,26 +1,23 @@
 import streamlit as st
 import requests
 from datetime import datetime
-import plotly.graph_objects as go
-import plotly.express as px
-import os
+
 
 # ============================================================
-# CONFIGURATION
+# CONFIG
 # ============================================================
 
-BACKEND_HOST = os.getenv("BACKEND_HOST", "industrial_api")
-API_BASE_URL = os.getenv("API_URL", "http://industrial_api:8000")
-PREDICT_URL = "http://industrial_api:8000/predict"
-RISK_URL = "http://industrial_api:8000/predict_risk"
+PREDICT_URL = "http://127.0.0.1:8000/predict"
+RISK_URL = "http://127.0.0.1:8000/predict_risk"
 SEQUENCE_URL = "http://industrial_api:8000/predict_sequence"
 
 st.set_page_config(
-    page_title="PredictAI | Industrial Intelligence Console",
-    page_icon=None,
+    page_title="PredictAI",
+    page_icon="⚙",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
 
 # ============================================================
 # SESSION STATE
@@ -38,557 +35,581 @@ if "history" not in st.session_state:
 if "machine_result" not in st.session_state:
     st.session_state.machine_result = None
 
-if "log_input_text" not in st.session_state:
-    st.session_state.log_input_text = ""
-
-if "ai_log_input_text" not in st.session_state:
-    st.session_state.ai_log_input_text = ""
-
 if "fleet_data" not in st.session_state:
     st.session_state.fleet_data = {}
 
 
 # ============================================================
-# MACHINE LOG SEQUENCES DATA (1 to 5 SPECIFIC)
-# ============================================================
-
-MACHINE_LOGS = {
-    0: {  # Machine #1 (M-101)
-        "healthy": [
-            "Gearbox checked during routine inspection. No issues found.",
-            "Bearing assembly checked, operating smoothly with no unusual noise.",
-            "Scheduled maintenance completed successfully.",
-            "Motor reviewed and confirmed operating within expected limits.",
-            "Valve inspected visually. No abnormalities detected.",
-            "Routine check completed on gearbox. No issues found.",
-            "Pump inspected, no leaks or unusual sounds observed.",
-            "Bearing inspected, no abnormalities detected.",
-            "Scheduled maintenance completed successfully.",
-            "Motor inspected, no unusual sounds observed.",
-        ],
-        "degrading": [
-            "Gearbox checked during routine inspection. No issues found.",
-            "Slight noise noticed near bearing area during inspection.",
-            "Minor vibration observed on motor during operation.",
-            "Intermittent hissing noise from valve. Under observation.",
-            "Pressure fluctuation slightly above normal on pump.",
-            "Increasing vibration detected in gearbox during operation.",
-            "Unusual bearing noise persists, temperature rising.",
-            "Abnormal motor noise detected, excessive vibration observed.",
-            "Valve leak worsening, fluid buildup near actuator.",
-            "Severe overheating and grinding noise across multiple components, immediate inspection recommended.",
-        ],
-    },
-    1: {  # Machine #2 (M-102)
-        "healthy": [
-            "Bearing assembly checked, no unusual noise.",
-            "Motor in good condition, stable readings throughout.",
-            "Scheduled maintenance completed successfully.",
-            "Valve checked, no leaks observed.",
-            "Pump operating within normal range.",
-            "Routine check completed on bearing. No issues found.",
-            "Gearbox inspected, no abnormalities detected.",
-            "Motor checked, no unusual sounds observed.",
-            "Scheduled maintenance completed successfully.",
-            "Valve inspected visually. No abnormalities detected.",
-        ],
-        "degrading": [
-            "Bearing assembly checked, no unusual noise.",
-            "Motor running slightly hot. Ventilation checked.",
-            "Minor pressure fluctuation observed on valve.",
-            "Intermittent noise from gearbox. Under observation.",
-            "Vibration levels slightly above normal on bearing. Lubrication applied.",
-            "Motor temperature increasing, unusual noise persisting.",
-            "Abnormal pressure drop detected near valve.",
-            "Excessive vibration observed near bearing and rotating shaft.",
-            "Pump noise increasing, grinding sound now audible.",
-            "Multiple components showing severe vibration and overheating, immediate inspection recommended.",
-        ],
-    },
-    2: {  # Machine #3 (M-103)
-        "healthy": [
-            "Motor reviewed and confirmed operating within expected limits.",
-            "Valve inspected visually. No abnormalities detected.",
-            "Scheduled maintenance completed successfully.",
-            "Pump inspected, no leaks or unusual sounds observed.",
-            "Bearing checked, operating smoothly.",
-            "Routine check completed on motor. No issues found.",
-            "Gearbox operating smoothly, no unusual sounds detected.",
-            "Valve checked during routine inspection. No issues found.",
-            "Scheduled maintenance completed successfully.",
-            "Pump checked, no unusual sounds observed.",
-        ],
-        "degrading": [
-            "Motor reviewed and confirmed operating within expected limits.",
-            "Slight leak noticed near valve during inspection.",
-            "Minor vibration observed near bearing during operation.",
-            "Intermittent noise from gearbox. Under observation.",
-            "Motor temperature slightly above normal, monitoring closely.",
-            "Increasing fluid buildup observed near valve actuator.",
-            "Unusual bearing noise persists despite lubrication.",
-            "Abnormal gearbox noise detected, excessive vibration observed.",
-            "Pump temperature increasing rapidly, hissing noise audible.",
-            "Severe motor overheating and valve leak, immediate inspection recommended.",
-        ],
-    },
-    3: {  # Machine #4 (M-104)
-        "healthy": [
-            "Valve inspected visually. No abnormalities detected.",
-            "Pump operating within normal range.",
-            "Scheduled maintenance completed successfully.",
-            "Gearbox checked during routine inspection. No issues found.",
-            "Motor inspected, no unusual sounds observed.",
-            "Routine check completed on valve. No issues found.",
-            "Bearing assembly checked, operating smoothly.",
-            "Pump inspected, no leaks observed.",
-            "Scheduled maintenance completed successfully.",
-            "Gearbox inspected, no abnormalities detected.",
-        ],
-        "degrading": [
-            "Valve inspected visually. No abnormalities detected.",
-            "Slight noise noticed near gearbox during inspection.",
-            "Minor vibration observed on pump during operation.",
-            "Intermittent noise from bearing area. Under observation.",
-            "Pressure drop slightly above normal near valve.",
-            "Motor running hotter than usual, ventilation checked.",
-            "Unusual grinding noise persists in gearbox.",
-            "Abnormal pump noise detected, excessive vibration observed.",
-            "Bearing temperature increasing rapidly, noise now audible.",
-            "Severe pressure loss and multiple component overheating, immediate inspection recommended.",
-        ],
-    },
-    4: {  # Machine #5 (M-105)
-        "healthy": [
-            "Pump inspected, no leaks or unusual sounds observed.",
-            "Gearbox checked during routine inspection. No issues found.",
-            "Scheduled maintenance completed successfully.",
-            "Bearing inspected, no abnormalities detected.",
-            "Valve checked, no leaks observed.",
-            "Routine check completed on pump. No issues found.",
-            "Motor in good condition, stable readings throughout.",
-            "Gearbox operating smoothly, no unusual sounds detected.",
-            "Scheduled maintenance completed successfully.",
-            "Bearing assembly checked, operating smoothly.",
-        ],
-        "degrading": [
-            "Pump inspected, no leaks or unusual sounds observed.",
-            "Slight vibration noticed near motor during inspection.",
-            "Minor noise observed on gearbox during operation.",
-            "Intermittent hissing noise from valve. Under observation.",
-            "Bearing temperature slightly above normal, monitoring closely.",
-            "Increasing vibration detected on pump during operation.",
-            "Unusual motor noise persists despite ventilation check.",
-            "Abnormal gearbox noise detected, excessive vibration observed.",
-            "Valve leak worsening rapidly, fluid buildup near actuator.",
-            "Severe overheating and grinding noise across components, immediate inspection recommended.",
-        ],
-    },
-}
-# ============================================================
-# BEST DEMO PRESETS
-# ============================================================
-
-LSTM_BEST_SEQUENCE = [
-    "Bearing assembly checked, operating smoothly.",
-    "Slight vibration noticed near bearing during inspection.",
-    "Minor noise observed from bearing during operation.",
-    "Bearing temperature slightly above normal, monitoring closely.",
-    "Increasing vibration detected on bearing during operation.",
-    "Unusual bearing noise persists despite lubrication.",
-    "Abnormal bearing noise detected, excessive vibration observed.",
-    "Bearing temperature increasing rapidly, grinding noise now audible.",
-    "Severe grinding noise and overheating at bearing, vibration worsening.",
-    "Severe bearing overheating and grinding noise, immediate inspection recommended.",
-]
-
-AE_PRESETS = {
-    "normal": "Technician report: Routine check completed on gearbox. No issues found.",
-    "borderline": "Alignment within normal range on coupling.",
-    "anomaly": "High thermal signature recorded on drive motor shaft. Loud grinding noise detected in bearing assembly.",
-}
-
-def get_machine_logs(machine_idx, is_degrading=False):
-    config = MACHINE_LOGS.get(machine_idx % 5)
-    return config["degrading"] if is_degrading else config["healthy"]
-
-
-# ============================================================
-# ENTERPRISE GLASSMORPHIC DESIGN SYSTEM
+# PREMIUM GLASSMORPHIC UI & ANIMATIONS
 # ============================================================
 
 st.markdown(
     """
 <style>
 
-/* ---------------- GLOBAL DESIGN SYSTEM ---------------- */
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:ital,wght@0,400;0,600;1,400&display=swap');
+/* ---------------- GLOBAL IMPORTS & BASE ---------------- */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
 html, body, [class*="css"] {
     font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 .stApp {
-    background: #06090e;
+    background: #0b0e14;
     background-image: 
-        radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.1) 0px, transparent 45%),
-        radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.05) 0px, transparent 45%),
-        radial-gradient(at 50% 50%, rgba(15, 23, 42, 0.5) 0px, transparent 100%);
+        radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.08) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(129, 140, 248, 0.05) 0px, transparent 50%);
     color: #f8fafc;
 }
 
 .block-container {
-    max-width: 1400px;
-    padding-top: 2rem;
-    padding-bottom: 4rem;
+    max-width: 1350px;
+    padding-top: 35px;
+    padding-bottom: 60px;
 }
 
-/* ---------------- ANIMATIONS ---------------- */
-@keyframes fadeInUp {
+/* ---------------- KEYFRAME ANIMATIONS ---------------- */
+@keyframes smoothFadeUp {
     from {
         opacity: 0;
-        transform: translateY(12px);
+        transform: translateY(18px) scale(0.99);
     }
     to {
         opacity: 1;
-        transform: translateY(0);
+        transform: translateY(0) scale(1);
     }
 }
 
-@keyframes pulseGlow {
-    0%, 100% { box-shadow: 0 0 15px rgba(52, 211, 153, 0.2); }
-    50% { box-shadow: 0 0 25px rgba(52, 211, 153, 0.4); }
+@keyframes ambientGlowPulse {
+    0%, 100% {
+        box-shadow: 0 0 20px rgba(99, 102, 241, 0.15), inset 0 0 15px rgba(99, 102, 241, 0.05);
+    }
+    50% {
+        box-shadow: 0 0 35px rgba(99, 102, 241, 0.3), inset 0 0 25px rgba(99, 102, 241, 0.1);
+    }
 }
 
-@keyframes liveDot {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.3; transform: scale(0.8); }
+@keyframes luxuryRingPulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4);
+    }
+    70% {
+        box-shadow: 0 0 0 16px rgba(245, 158, 11, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+    }
 }
 
-/* ---------------- SIDEBAR TOGGLE BUTTON ---------------- */
-button[data-testid="stSidebarCollapseButton"],
-button[data-testid="baseButton-headerNoPadding"],
-[data-testid="collapsedControl"] {
-    background-color: rgba(99, 102, 241, 0.18) !important;
-    border: 1px solid rgba(129, 140, 248, 0.4) !important;
-    border-radius: 8px !important;
-    color: #818cf8 !important;
-    transition: all 0.25s ease !important;
-    padding: 6px 10px !important;
+@keyframes statusDotPulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.35;
+        transform: scale(0.85);
+    }
 }
 
-button[data-testid="stSidebarCollapseButton"]:hover,
-button[data-testid="baseButton-headerNoPadding"]:hover,
-[data-testid="collapsedControl"]:hover {
-    background-color: rgba(99, 102, 241, 0.35) !important;
-    border-color: rgba(129, 140, 248, 0.8) !important;
-    box-shadow: 0 0 12px rgba(99, 102, 241, 0.4) !important;
-    transform: scale(1.05);
+@keyframes metallicSweep {
+    0% {
+        transform: translateX(-150%) rotate(25deg);
+    }
+    100% {
+        transform: translateX(200%) rotate(25deg);
+    }
 }
 
-button[data-testid="stSidebarCollapseButton"] svg,
-button[data-testid="baseButton-headerNoPadding"] svg,
-[data-testid="collapsedControl"] svg {
-    fill: #818cf8 !important;
-    stroke: #818cf8 !important;
+@keyframes progressExpand {
+    from {
+        transform: scaleX(0);
+        transform-origin: left;
+    }
+    to {
+        transform: scaleX(1);
+        transform-origin: left;
+    }
 }
 
-/* ---------------- ENHANCED SIDEBAR ---------------- */
+@keyframes counterPop {
+    0% {
+        opacity: 0;
+        transform: scale(0.92);
+    }
+    70% {
+        transform: scale(1.03);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* ---------------- SIDEBAR ---------------- */
 section[data-testid="stSidebar"] {
-    background: rgba(10, 14, 23, 0.95) !important;
-    -webkit-backdrop-filter: blur(24px) !important;
-    backdrop-filter: blur(24px) !important;
-    border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+    background: rgba(13, 17, 23, 0.75);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-right: 1px solid rgba(255, 255, 255, 0.07);
 }
 
 section[data-testid="stSidebar"] > div {
-    padding: 24px 16px !important;
+    padding: 28px 20px;
 }
 
-.brand-header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding-bottom: 20px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.brand-logo {
-    width: 38px;
-    height: 38px;
-    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.2rem;
-    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
-}
-
-.brand-name {
-    font-size: 1.25rem;
+.logo {
+    font-size: 1.35rem;
     font-weight: 800;
     color: #f8fafc;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.03em;
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.brand-name span {
-    color: #818cf8;
+.logo:hover {
+    transform: translateX(4px);
 }
 
-.brand-subtitle {
+.logo span {
+    background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.logo-sub {
     color: #64748b;
     font-size: 0.65rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    margin-top: 4px;
 }
 
-.sidebar-nav-title {
+.sidebar-heading {
     color: #475569;
-    font-size: 0.62rem;
+    font-size: 0.58rem;
     font-weight: 700;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.15em;
     text-transform: uppercase;
-    margin: 24px 4px 12px;
+    margin: 32px 4px 12px;
 }
 
-div[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
-    font-size: 0.88rem !important;
-    font-weight: 600 !important;
-    letter-spacing: 0.01em !important;
-}
-
-div[data-testid="stSidebar"] div[role="radiogroup"] > label {
-    background: rgba(255, 255, 255, 0.02) !important;
-    border: 1px solid rgba(255, 255, 255, 0.05) !important;
-    border-radius: 10px !important;
-    padding: 10px 14px !important;
-    margin-bottom: 8px !important;
-    transition: all 0.25s ease !important;
-    cursor: pointer !important;
-}
-
-div[data-testid="stSidebar"] div[role="radiogroup"] > label:hover {
-    background: rgba(99, 102, 241, 0.15) !important;
-    border-color: rgba(99, 102, 241, 0.3) !important;
-    transform: translateX(3px);
-}
-
-div[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"] {
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.25) 0%, rgba(79, 70, 229, 0.25) 100%) !important;
-    border: 1px solid rgba(129, 140, 248, 0.5) !important;
-    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2) !important;
-}
-
-div[data-testid="stSidebar"] div[role="radiogroup"] > label[data-checked="true"] p {
-    color: #818cf8 !important;
-    font-weight: 700 !important;
-}
-
-div[data-testid="stSidebar"] div[role="radiogroup"] [data-testid="stRadioButton"] {
-    display: none !important;
-}
-div[data-testid="stSidebar"] div[role="radiogroup"] label div:first-child {
-    display: none !important;
-}
-
-.status-card {
+.system-box {
     border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(15, 23, 42, 0.6);
+    background: rgba(22, 27, 38, 0.5);
     backdrop-filter: blur(12px);
-    border-radius: 12px;
-    padding: 14px;
-    margin-top: 24px;
+    border-radius: 14px;
+    padding: 16px;
+    margin-top: 30px;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.status-indicator {
+.system-box:hover {
+    border-color: rgba(99, 102, 241, 0.4);
+    box-shadow: 0 8px 20px -6px rgba(0,0,0,0.4);
+}
+
+.system-title {
+    color: #64748b;
+    font-size: 0.58rem;
+    text-transform: uppercase;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+}
+
+.system-online {
     color: #34d399;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
+    margin-top: 8px;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
+}
+
+.system-online::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    background: #34d399;
+    border-radius: 50%;
+    display: inline-block;
+    animation: statusDotPulse 2s ease-in-out infinite;
+}
+
+.system-info {
+    color: #475569;
+    font-size: 0.62rem;
+    margin-top: 4px;
+}
+
+/* ---------------- HEADER ---------------- */
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+    animation: smoothFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.header-title {
+    font-size: 1.95rem;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    background: linear-gradient(180deg, #ffffff 0%, #cbd5e1 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.header-subtitle {
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 500;
+    margin-top: 4px;
+}
+
+.status {
+    border: 1px solid rgba(52, 211, 153, 0.25);
+    background: rgba(6, 78, 59, 0.2);
+    backdrop-filter: blur(8px);
+    color: #34d399;
+    border-radius: 20px;
+    padding: 8px 16px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    animation: ambientGlowPulse 4s ease-in-out infinite;
+}
+
+/* ---------------- INTRO & CARDS ---------------- */
+.intro {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(18, 24, 38, 0.6);
+    backdrop-filter: blur(16px);
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 18px;
+    animation: smoothFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
+    position: relative;
+    overflow: hidden;
+}
+
+.intro::after {
+    content: "";
+    position: absolute;
+    top: -50%; left: -50%;
+    width: 200%; height: 200%;
+    background: linear-gradient(
+        45deg,
+        transparent 45%,
+        rgba(255, 255, 255, 0.03) 50%,
+        transparent 55%
+    );
+    animation: metallicSweep 7s ease-in-out infinite;
+    pointer-events: none;
+}
+
+.intro-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #f1f5f9;
+}
+
+.intro-text {
+    color: #64748b;
+    font-size: 0.72rem;
+    line-height: 1.6;
     margin-top: 6px;
 }
 
-.status-indicator::before {
-    content: "";
-    width: 8px;
-    height: 8px;
-    background: #34d399;
-    border-radius: 50%;
-    animation: liveDot 2s ease-in-out infinite;
-}
-
-/* ---------------- DASHBOARD HEADER ---------------- */
-.dash-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-bottom: 20px;
-    margin-bottom: 24px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    animation: fadeInUp 0.5s ease-out both;
-}
-
-.dash-title {
-    font-size: 2rem;
-    font-weight: 800;
-    letter-spacing: -0.03em;
-    color: #f8fafc;
-}
-
-.dash-subtitle {
-    color: #64748b;
-    font-size: 0.85rem;
-    margin-top: 4px;
-}
-
-.system-badge {
-    border: 1px solid rgba(52, 211, 153, 0.3);
-    background: rgba(6, 78, 59, 0.2);
-    color: #34d399;
-    border-radius: 30px;
-    padding: 6px 16px;
-    font-size: 0.7rem;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    animation: pulseGlow 4s ease-in-out infinite;
-}
-
-/* ---------------- STAT CARDS / METRICS ---------------- */
-.stat-grid {
+/* ---------------- METRICS ---------------- */
+.metrics {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 16px;
-    margin-bottom: 24px;
+    gap: 14px;
+    margin-bottom: 18px;
 }
 
-.stat-card {
-    background: rgba(13, 18, 30, 0.65);
-    backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+.metric {
+    background: rgba(18, 24, 38, 0.5);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.07);
     border-radius: 14px;
     padding: 20px;
-    position: relative;
-    overflow: hidden;
-    transition: all 0.3s ease;
-    animation: fadeInUp 0.5s ease-out both;
+    transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    animation: smoothFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.stat-card:hover {
-    transform: translateY(-2px);
-    border-color: rgba(99, 102, 241, 0.3);
-    background: rgba(18, 25, 42, 0.8);
+.metric:nth-child(1) { animation-delay: 0.08s; }
+.metric:nth-child(2) { animation-delay: 0.14s; }
+.metric:nth-child(3) { animation-delay: 0.20s; }
+.metric:nth-child(4) { animation-delay: 0.26s; }
+
+.metric:hover {
+    transform: translateY(-4px);
+    border-color: rgba(99, 102, 241, 0.35);
+    background: rgba(24, 32, 50, 0.7);
+    box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.5), 0 0 20px rgba(99, 102, 241, 0.1);
 }
 
-.stat-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.stat-label {
+.metric-label {
     color: #64748b;
-    font-size: 0.68rem;
+    font-size: 0.58rem;
     font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-}
-
-.stat-value {
-    color: #f8fafc;
-    font-size: 1.45rem;
-    font-weight: 800;
-    margin-top: 10px;
-}
-
-.stat-sub {
-    font-size: 0.7rem;
-    color: #94a3b8;
-    margin-top: 4px;
-}
-
-/* ---------------- CONTENT CARDS ---------------- */
-.glass-panel {
-    background: rgba(13, 18, 30, 0.65);
-    backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 16px;
-    padding: 24px;
-    margin-bottom: 20px;
-    animation: fadeInUp 0.5s ease-out both;
-}
-
-.panel-title {
-    color: #64748b;
-    font-size: 0.68rem;
-    font-weight: 700;
-    text-transform: uppercase;
     letter-spacing: 0.1em;
-    margin-bottom: 12px;
+    text-transform: uppercase;
 }
 
-.panel-heading {
+.metric-value {
     color: #f8fafc;
-    font-size: 1.15rem;
-    font-weight: 700;
-    margin-bottom: 16px;
+    font-size: 1.1rem;
+    font-weight: 800;
+    margin-top: 8px;
+    animation: counterPop 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-/* ---------------- DIAGNOSTIC TABLE DETAILS ---------------- */
-.data-row {
+/* ---------------- CARDS & ANOMALY ---------------- */
+.card, .anomaly, .risk, .history {
+    background: rgba(18, 24, 38, 0.5);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 16px;
+    padding: 22px;
+    transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    animation: smoothFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.12s both;
+}
+
+.card:hover, .history:hover {
+    transform: translateY(-3px);
+    border-color: rgba(99, 102, 241, 0.3);
+    background: rgba(24, 32, 50, 0.65);
+    box-shadow: 0 16px 36px -10px rgba(0, 0, 0, 0.4);
+}
+
+.card-heading {
+    color: #64748b;
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.card-title {
+    color: #f8fafc;
+    font-size: 1rem;
+    font-weight: 700;
+    margin-top: 6px;
+}
+
+/* ---------------- CONDITION ---------------- */
+.condition {
+    text-align: center;
+    padding: 24px;
+}
+
+.condition-symbol {
+    width: 80px;
+    height: 80px;
+    border: 2px solid #f59e0b;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 24px auto 16px;
+    color: #f59e0b;
+    font-size: 2rem;
+    font-weight: 800;
+    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.condition-symbol:hover {
+    transform: scale(1.1) rotate(4deg);
+}
+
+.condition-symbol.condition-alert {
+    animation: luxuryRingPulse 2.2s infinite;
+}
+
+.condition-name {
+    color: #f59e0b;
+    font-size: 1.2rem;
+    font-weight: 800;
+}
+
+.condition-description {
+    color: #64748b;
+    font-size: 0.68rem;
+    margin-top: 6px;
+}
+
+/* ---------------- DETAILS & RECOMMENDATIONS ---------------- */
+.detail {
     display: flex;
     justify-content: space-between;
-    align-items: center;
     padding: 12px 0;
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    transition: background 0.2s ease;
 }
 
-.data-row:last-child {
-    border-bottom: none;
+.detail:hover {
+    background: rgba(255, 255, 255, 0.02);
 }
 
-.data-key {
+.detail-label {
     color: #64748b;
-    font-size: 0.78rem;
+    font-size: 0.68rem;
 }
 
-.data-val {
-    color: #f1f5f9;
-    font-size: 0.78rem;
+.detail-value {
+    color: #e2e8f0;
+    font-size: 0.68rem;
     font-weight: 600;
     font-family: 'JetBrains Mono', monospace;
 }
 
-/* ---------------- PROGRESS BARS ---------------- */
-.bar-bg {
-    width: 100%;
-    height: 8px;
-    background: rgba(255, 255, 255, 0.06);
-    border-radius: 10px;
-    overflow: hidden;
+.diagnosis-title, .risk-value {
+    animation: counterPop 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.recommendation {
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.recommendation-title {
+    color: #94a3b8;
+    font-size: 0.58rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+}
+
+.recommendation-text {
+    color: #94a3b8;
+    font-size: 0.68rem;
+    line-height: 1.6;
     margin-top: 6px;
 }
 
-.bar-fill {
-    height: 100%;
+/* ---------------- PROGRESS BARS & SHIMMER ---------------- */
+.progress {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.06);
     border-radius: 10px;
-    transition: width 0.8s ease-in-out;
+    overflow: hidden;
+    margin: 8px 0 18px;
+    position: relative;
 }
 
-/* ---------------- CONTROLS & FORM OVERRIDES ---------------- */
+.progress > div {
+    transform-origin: left;
+    animation: progressExpand 1.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.progress::after {
+    content: "";
+    position: absolute;
+    top: 0; left: -40%;
+    width: 40%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    animation: metallicSweep 3s ease-in-out infinite;
+    pointer-events: none;
+}
+
+/* ---------------- PIPELINE ANIMATIONS ---------------- */
+.pipeline {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    position: relative;
+}
+
+.pipeline-card {
+    background: rgba(18, 24, 38, 0.5);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 14px;
+    padding: 20px 12px;
+    text-align: center;
+    position: relative;
+    z-index: 2;
+    transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.pipeline-card:nth-child(1) { animation: smoothFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both; }
+.pipeline-card:nth-child(2) { animation: smoothFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both; }
+.pipeline-card:nth-child(3) { animation: smoothFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both; }
+.pipeline-card:nth-child(4) { animation: smoothFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.35s both; }
+.pipeline-card:nth-child(5) { animation: smoothFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.45s both; }
+
+.pipeline-card:hover {
+    transform: translateY(-6px) scale(1.02);
+    background: rgba(24, 32, 50, 0.75);
+    border-color: rgba(99, 102, 241, 0.4);
+    box-shadow: 0 12px 28px rgba(99, 102, 241, 0.15);
+}
+
+.pipeline-icon {
+    font-size: 1.4rem;
+    margin: 10px 0;
+    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.pipeline-card:hover .pipeline-icon {
+    transform: scale(1.25) rotate(-6deg);
+}
+
+.pipeline-step {
+    color: #818cf8;
+    font-size: 0.55rem;
+    font-weight: 800;
+}
+
+.pipeline-name {
+    color: #cbd5e1;
+    font-size: 0.64rem;
+    font-weight: 600;
+}
+
+/* Connector Line & Moving Signal */
+.pipeline-card:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    top: 50%; right: -13px;
+    width: 26px; height: 1px;
+    background: rgba(255, 255, 255, 0.12);
+    transform: translateY(-50%);
+    z-index: 1;
+}
+
+.pipeline-card:not(:last-child)::before {
+    content: "›";
+    position: absolute;
+    top: 50%; right: -18px;
+    transform: translateY(-54%);
+    color: #818cf8;
+    font-size: 18px;
+    font-weight: 700;
+    z-index: 4;
+    animation: statusDotPulse 1.8s ease-in-out infinite;
+}
+
+/* ---------------- STREAMLIT INTERACTION CONTROLS ---------------- */
 .stButton > button {
     border-radius: 10px !important;
-    min-height: 46px !important;
+    min-height: 44px !important;
     font-weight: 600 !important;
     letter-spacing: 0.02em !important;
-    transition: all 0.25s ease !important;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 .stButton > button:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.25) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(99, 102, 241, 0.35) !important;
+}
+
+.stButton > button:active {
+    transform: translateY(1px) scale(0.98);
 }
 
 button[kind="primary"] {
@@ -598,28 +619,47 @@ button[kind="primary"] {
 }
 
 textarea, input {
-    background: rgba(10, 14, 23, 0.8) !important;
+    background: rgba(11, 14, 20, 0.8) !important;
     color: #f1f5f9 !important;
     border-radius: 10px !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 textarea:focus, input:focus {
     border-color: #6366f1 !important;
-    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2) !important;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25), 0 0 20px rgba(99, 102, 241, 0.15) !important;
 }
 
-#MainMenu, footer { visibility: hidden; }
-header[data-testid="stHeader"] { background: transparent; }
+#MainMenu {
+    visibility: hidden;
+}
 
-[data-testid="stAppDeployButton"],
-[data-testid="stMainMenu"] { visibility: hidden; }
+footer {
+    visibility: hidden;
+}
 
-[data-testid="stExpandSidebarButton"],
-[data-testid="stSidebarCollapsedControl"] {
-    visibility: visible !important;
-    opacity: 1 !important;
-    z-index: 999999 !important;
+header[data-testid="stHeader"] {
+    background: transparent;
+}
+
+/* ---------------- RESPONSIVE & ACCESSIBILITY ---------------- */
+@media (max-width: 900px) {
+    .metrics, .pipeline {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .pipeline-card:not(:last-child)::after,
+    .pipeline-card:not(:last-child)::before {
+        display: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
 }
 
 </style>
@@ -629,7 +669,25 @@ header[data-testid="stHeader"] { background: transparent; }
 
 
 # ============================================================
-# HELPER FUNCTIONS
+# BEST DEMO UNHEALTHY SEQUENCE PRESETS
+# ============================================================
+
+LSTM_UNHEALTHY_SEQUENCE = [
+    "slightly elevated readings near the gearbox drift in pressure noted but still within acceptable operating range",
+    "a mild occasional noise was detected on the conveyor will keep an eye on it during upcoming shifts",
+    "slightly elevated readings near the control panel play in the coupling noted but still within acceptable operating range",
+    "technician report slight noise from motor shaft monitoring required",
+    "during shift inspection minor misalignment noticed adjusted slightly",
+    "shift handover note oil viscosity degraded complete oil change needed",
+    "slight play in the coupling noticed on the motor during today s check machine continues to operate normally overall",
+    "shift handover note small oil leak noticed near base cleaned",
+    "belt tension seems marginally looser than the last inspection still functioning normally adjustment planned for next service",
+    "slightly elevated readings near the gearbox hum noted but still within acceptable operating range."
+]
+
+
+# ============================================================
+# HELPERS
 # ============================================================
 
 def render_html(content):
@@ -637,37 +695,82 @@ def render_html(content):
 
 
 def page_header(title, subtitle):
+
     render_html(
         f"""
-        <div class="dash-header">
+        <div class="header">
+
             <div>
-                <div class="dash-title">{title}</div>
-                <div class="dash-subtitle">{subtitle}</div>
+                <div class="header-title">
+                    {title}
+                </div>
+
+                <div class="header-subtitle">
+                    {subtitle}
+                </div>
             </div>
-            <div class="system-badge">● LIVE REPORTING ACTIVE</div>
+
+            <div class="status">
+                ● AI SYSTEM ONLINE
+            </div>
+
+        </div>
+        """
+    )
+
+
+def section(title, subtitle=""):
+
+    render_html(
+        f"""
+        <div class="section">
+
+            <div class="section-title">
+                {title}
+            </div>
+
+            {
+                f'<div class="section-subtitle">{subtitle}</div>'
+                if subtitle else ""
+            }
+
         </div>
         """
     )
 
 
 # ============================================================
-# API INTERACTION LOGIC
+# API
 # ============================================================
 
 def predict_log(log):
-    urls_to_try = [PREDICT_URL, "http://host.docker.internal:8000/predict"]
 
-    for url in urls_to_try:
-        try:
-            response = requests.post(url, json={"log_text": log}, timeout=5)
-            if response.status_code == 200:
-                return response.json()
-        except requests.exceptions.RequestException:
-            continue
-
-    raise requests.exceptions.ConnectionError(
-        "Backend microservice API is currently unreachable."
+    response = requests.post(
+        PREDICT_URL,
+        json={
+            "log_text": log
+        },
+        timeout=30
     )
+
+    response.raise_for_status()
+
+    return response.json()
+
+
+def predict_machine_risk(machine_id):
+
+    response = requests.post(
+        RISK_URL,
+        json={
+            "machine_id": machine_id
+        },
+        timeout=30
+    )
+
+    response.raise_for_status()
+
+    return response.json()
 
 
 def predict_sequence(logs):
@@ -699,105 +802,284 @@ def extract_risk_pct(resp):
 
 
 # ============================================================
-# DATA EXTRACTION HELPERS
+# RESULT HELPERS
 # ============================================================
 
 def get_failure(result):
-    if not result: return "No Active Analysis"
-    return str(result.get("predicted_failure_type", result.get("failure_type", "No Failure")))
+
+    if not result:
+        return "No Failure"
+
+    return str(
+        result.get(
+            "predicted_failure_type",
+            result.get(
+                "failure_type",
+                "No Failure"
+            )
+        )
+    )
 
 
 def get_confidence(result):
-    if not result: return 0.0
+
+    if not result:
+        return 0
+
     try:
-        val = float(result.get("confidence", 0))
-        return val * 100 if val <= 1 else val
+
+        value = float(
+            result.get(
+                "confidence",
+                0
+            )
+        )
+
+        if value <= 1:
+            value *= 100
+
+        return value
+
     except:
-        return 0.0
+
+        return 0
 
 
 def get_component(result):
-    if not result: return "N/A"
-    return str(result.get("component", "Unspecified"))
+
+    if not result:
+        return "Unspecified"
+
+    return str(
+        result.get(
+            "component",
+            "Unspecified"
+        )
+    )
 
 
 def get_severity(result):
-    if not result: return "N/A"
-    return str(result.get("severity", "Unknown"))
+
+    if not result:
+        return "Unknown"
+
+    return str(
+        result.get(
+            "severity",
+            "Unknown"
+        )
+    )
 
 
 def get_risk(result):
-    if not result: return "Normal"
-    val = str(result.get("risk_level", "Normal"))
-    for char in ["🔴", "🟠", "🟡", "🟢", "⚠️", "⚠", "●", "•"]:
-        val = val.replace(char, "")
-    return val.strip()
+
+    if not result:
+        return "Normal"
+
+    value = result.get(
+        "risk_level",
+        "Normal"
+    )
+
+    return clean_risk(value)
+
+
+def clean_risk(value):
+
+    value = str(value)
+
+    for symbol in [
+        "🔴",
+        "🟠",
+        "🟡",
+        "🟢",
+        "⚠️",
+        "⚠",
+        "●",
+        "•"
+    ]:
+
+        value = value.replace(
+            symbol,
+            ""
+        )
+
+    return value.strip()
+
+
+def get_risk_icon(result):
+
+    risk = get_risk(result).lower()
+
+    if "critical" in risk:
+        return "🔴"
+
+    if (
+        "warning" in risk
+        or "moderate" in risk
+        or "medium" in risk
+    ):
+        return "🟠"
+
+    return "🟢"
 
 
 def get_risk_color(result):
+
     risk = get_risk(result).lower()
-    if "critical" in risk: return "#f87171"
-    if "warning" in risk or "moderate" in risk or "medium" in risk: return "#fbbf24"
+
+    if "critical" in risk:
+        return "#f87171"
+
+    if (
+        "warning" in risk
+        or "moderate" in risk
+        or "medium" in risk
+    ):
+        return "#fbbf24"
+
     return "#34d399"
 
 
 def get_anomaly(result):
+
     if not result:
         return False
 
-    error = float(result.get("reconstruction_error", 0))
-    threshold = float(result.get("anomaly_threshold", 1))
+    value = result.get(
+        "is_anomaly",
+        result.get(
+            "anomaly",
+            False
+        )
+    )
 
-    if threshold > 0:
-        return error > (threshold * 1.5)
+    if isinstance(value, str):
 
-    val = result.get("is_anomaly", result.get("anomaly", False))
-    if isinstance(val, str):
-        return val.lower() in ["true", "yes", "1", "detected"]
-    return bool(val)
+        return value.lower() in [
+            "true",
+            "yes",
+            "1",
+            "detected"
+        ]
 
-
-def hex_to_rgba(color, alpha):
-    color = color.lstrip("#")
-    r, g, b = int(color[0:2], 16), int(color[2:4], 16), int(color[4:6], 16)
-    return f"rgba({r}, {g}, {b}, {alpha})"
+    return bool(value)
 
 
 def get_condition(result):
+
     if not result:
-        return ("Idle", "Awaiting log telemetry input.", "#64748b", "●")
+
+        return (
+            "Waiting",
+            "Run an AI analysis to determine machine condition.",
+            "#64748b",
+            "?"
+        )
+
     if get_anomaly(result):
+
         risk = get_risk(result).lower()
+
         if "critical" in risk:
-            return ("Critical Risk", "Immediate intervention recommended.", "#f87171", "●")
-        return ("Anomaly Flagged", "Unusual component behavior detected.", "#fbbf24", "●")
-    
+
+            return (
+                "Critical",
+                "Immediate inspection recommended.",
+                "#f87171",
+                "!"
+            )
+
+        return (
+            "Attention Required",
+            "Unusual machine behavior detected.",
+            "#fbbf24",
+            "!"
+        )
+
     risk = get_risk(result).lower()
+
     if "critical" in risk:
-        return ("Critical Risk", "Immediate intervention recommended.", "#f87171", "●")
-    if "warning" in risk or "moderate" in risk:
-        return ("Caution Required", "Monitor operating parameters closely.", "#fbbf24", "●")
-    
-    return ("Optimal Operating State", "Equipment functioning within baseline parameters.", "#34d399", "●")
+
+        return (
+            "Critical",
+            "Immediate inspection recommended.",
+            "#f87171",
+            "!"
+        )
+
+    if (
+        "warning" in risk
+        or "moderate" in risk
+    ):
+
+        return (
+            "Monitor",
+            "Continue monitoring machine behavior.",
+            "#fbbf24",
+            "◐"
+        )
+
+    return (
+        "Normal",
+        "Equipment operating within expected range.",
+        "#34d399",
+        "✓"
+    )
 
 
 def get_recommendation(result):
+
     if not result:
-        return "Submit a log entry or select an enterprise example to execute multi-model analysis."
+
+        return (
+            "Run an AI analysis to receive "
+            "a maintenance recommendation."
+        )
+
     if get_anomaly(result):
-        return "Uncharacteristic signal reconstruction variance observed. Schedule physical inspection of primary drive components."
+
+        return (
+            "An unusual maintenance pattern has been detected. "
+            "Inspect the equipment and review recent operating "
+            "conditions."
+        )
+
     risk = get_risk(result).lower()
+
     if "critical" in risk:
-        return "Critical failure probability detected. Halting equipment operation recommended to prevent catastrophic damage."
-    if "warning" in risk or "moderate" in risk:
-        return "Elevated degradation signature detected. Schedule routine servicing within the next 24 operating hours."
-    return "No servicing required. System operating within optimal thermal and mechanical parameters."
+
+        return (
+            "Immediate equipment inspection is recommended. "
+            "Consider stopping operation if abnormal symptoms continue."
+        )
+
+    if (
+        "warning" in risk
+        or "moderate" in risk
+    ):
+
+        return (
+            "Schedule a maintenance inspection soon and continue "
+            "monitoring equipment behavior."
+        )
+
+    return (
+        "Continue routine monitoring. "
+        "No immediate maintenance action is required."
+    )
 
 
 def save_result(result):
-    now = datetime.now().strftime("%H:%M:%S")
+
+    now = datetime.now().strftime(
+        "%H:%M:%S"
+    )
+
     st.session_state.last_result = result
+
     st.session_state.last_analyzed = now
+
     st.session_state.history.insert(
         0,
         {
@@ -807,466 +1089,754 @@ def save_result(result):
             "severity": get_severity(result),
             "confidence": get_confidence(result),
             "risk": get_risk(result),
-            "anomaly": ("Detected" if get_anomaly(result) else "Normal")
+            "anomaly": (
+                "Detected"
+                if get_anomaly(result)
+                else "Normal"
+            )
         }
     )
 
 
 # ============================================================
-# SIDEBAR NAVIGATION
+# SIDEBAR
 # ============================================================
 
 with st.sidebar:
+
     render_html(
         """
-        <div class="brand-header">
-            <div class="brand-logo">P</div>
-            <div>
-                <div class="brand-name">Predict<span>AI</span></div>
-                <div class="brand-subtitle">Enterprise Diagnostics</div>
-            </div>
+        <div class="logo">
+            ⚙ Predict<span>AI</span>
         </div>
-        <div class="sidebar-nav-title">Console Navigation</div>
+
+        <div class="logo-sub">
+            Industrial Predictive Intelligence
+        </div>
+
+        <div class="sidebar-heading">
+            Navigation
+        </div>
         """
     )
 
-    menu_options = {
-        "  Dashboard": "Dashboard",
-        "  AI Log Analyzer": "AI Log Analyzer",
-        "  Machine Risk": "Machine Risk",
-        "  Prediction History": "Prediction History",
-        "  Model Architecture": "Model Architecture"
-    }
-
-    selected_label = st.radio(
+    selected_page = st.radio(
         "Navigation",
-        list(menu_options.keys()),
+        [
+            "Dashboard",
+            "AI Log Analyzer",
+            "Machine Risk",
+            "Prediction History",
+            "Model Pipeline"
+        ],
         label_visibility="collapsed"
     )
 
-    selected_page = menu_options[selected_label]
-
     render_html(
         """
-        <div class="status-card" style="margin-top: 32px;">
-            <div style="color: #64748b; font-size: 0.62rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.08em;">
-                Backend Microservices
+        <div class="system-box">
+
+            <div class="system-title">
+                Platform Status
             </div>
-            <div class="status-indicator">
-                Connected & Operational
+
+            <div class="system-online">
+                Operational
             </div>
-            <div style="color: #475569; font-size: 0.68rem; margin-top: 4px;">
-                Model: DistilBERT + LSTM
+
+            <div class="system-info">
+                AI services connected
             </div>
+
         </div>
         """
     )
 
 
 # ============================================================
-# PAGE 1: DASHBOARD
+# DASHBOARD
 # ============================================================
 
 if selected_page == "Dashboard":
 
     page_header(
-        "Executive Command Center",
-        "Real-time machine health, predictive risk metrics, and diagnostic overview"
+        "Machine Intelligence",
+        "Predictive maintenance command center"
     )
 
     result = st.session_state.last_result
 
-    # ---------------- TOP STAT CARDS ----------------
-    cond_name, cond_desc, cond_color, cond_symbol = get_condition(result)
-    risk_val = get_risk(result)
-    risk_col = get_risk_color(result)
-    anom_status = "DETECTED" if get_anomaly(result) else "NORMAL"
-    anom_col = "#fbbf24" if get_anomaly(result) else "#34d399"
-    conf_val = get_confidence(result)
+    render_html(
+        """
+        <div class="intro">
+
+            <div class="intro-title">
+                Monitor equipment before failure happens.
+            </div>
+
+            <div class="intro-text">
+                Analyze maintenance logs using AI-powered
+                failure classification, anomaly detection,
+                and predictive risk analysis.
+            </div>
+
+        </div>
+        """
+    )
+
+
+    # --------------------------------------------------------
+    # METRICS
+    # --------------------------------------------------------
+
+    condition_name = get_condition(result)[0]
+
+    risk = get_risk(result)
+
+    anomaly_status = (
+        "Detected"
+        if get_anomaly(result)
+        else "Normal"
+    )
+
+    confidence = get_confidence(result)
 
     render_html(
         f"""
-        <div class="stat-grid">
-            <div class="stat-card" style="background: {hex_to_rgba(cond_color, 0.10)}; border: 1px solid {hex_to_rgba(cond_color, 0.40)};">
-                <div class="stat-header">
-                    <span class="stat-label">Equipment Condition</span>
-                    <span style="color: {cond_color};">{cond_symbol}</span>
+        <div class="metrics">
+
+            <div class="metric">
+
+                <div class="metric-label">
+                    Machine Condition
                 </div>
-                <div class="stat-value" style="color: {cond_color};">{cond_name}</div>
-                <div class="stat-sub">{cond_desc}</div>
+
+                <div
+                    class="metric-value"
+                    style="
+                        color:{get_condition(result)[2]};
+                    "
+                >
+                    {condition_name}
+                </div>
+
             </div>
 
-            <div class="stat-card" style="background: {hex_to_rgba(risk_col, 0.10)}; border: 1px solid {hex_to_rgba(risk_col, 0.40)};">
-                <div class="stat-header">
-                    <span class="stat-label">Assessed Risk Level</span>
-                    <span style="color: {risk_col};">●</span>
+
+            <div class="metric">
+
+                <div class="metric-label">
+                    Risk Level
                 </div>
-                <div class="stat-value" style="color: {risk_col};">{risk_val}</div>
-                <div class="stat-sub">Multi-layer risk classification</div>
+
+                <div
+                    class="metric-value"
+                    style="
+                        color:{get_risk_color(result)};
+                    "
+                >
+                    {get_risk_icon(result)} {risk}
+                </div>
+
             </div>
 
-            <div class="stat-card" style="background: {hex_to_rgba(anom_col, 0.10)}; border: 1px solid {hex_to_rgba(anom_col, 0.40)};">
-                <div class="stat-header">
-                    <span class="stat-label">Autoencoder Signal</span>
-                    <span style="color: {anom_col};">●</span>
+
+            <div class="metric">
+
+                <div class="metric-label">
+                    Anomaly Status
                 </div>
-                <div class="stat-value" style="color: {anom_col};">{anom_status}</div>
-                <div class="stat-sub">Reconstruction variance check</div>
+
+                <div
+                    class="metric-value"
+                    style="
+                        color:{
+                            '#fbbf24'
+                            if get_anomaly(result)
+                            else '#34d399'
+                        };
+                    "
+                >
+                    {anomaly_status}
+                </div>
+
             </div>
 
-            <div class="stat-card">
-                <div class="stat-header">
-                    <span class="stat-label">Model Confidence</span>
-                    <span style="color: #818cf8;">●</span>
+
+            <div class="metric">
+
+                <div class="metric-label">
+                    AI Confidence
                 </div>
-                <div class="stat-value">{conf_val:.1f}%</div>
-                <div class="stat-sub">DistilBERT probability score</div>
+
+                <div class="metric-value">
+                    {confidence:.2f}%
+                </div>
+
             </div>
+
         </div>
         """
     )
 
-    # ---------------- MAIN DIAGNOSTIC PANEL ----------------
-    left, right = st.columns([1, 1.2], gap="medium")
+
+    # --------------------------------------------------------
+    # CONDITION / DIAGNOSIS
+    # --------------------------------------------------------
+
+    left, right = st.columns(
+        [0.85, 1.5],
+        gap="large"
+    )
+
 
     with left:
+
+        name, description, color, symbol = get_condition(
+            result
+        )
+
         render_html(
             f"""
-            <div class="glass-panel">
-                <div class="panel-title">Primary Diagnostic Result</div>
-                <div style="font-size: 1.4rem; font-weight: 800; color: #f8fafc; margin-bottom: 12px;">
-                    {get_failure(result)}
+            <div class="card condition">
+
+                <div class="card-heading">
+                    Equipment Condition
                 </div>
-                <div class="data-row">
-                    <span class="data-key">Affected Subsystem</span>
-                    <span class="data-val">{get_component(result)}</span>
+
+                <div
+                    class="condition-symbol {
+                        'condition-alert'
+                        if name in ['Critical', 'Attention Required', 'Monitor']
+                        else ''
+                    }"
+                    style="
+                        color:{color};
+                        border-color:{color};
+                    "
+                >
+                    {symbol}
                 </div>
-                <div class="data-row">
-                    <span class="data-key">Failure Severity</span>
-                    <span class="data-val">{get_severity(result)}</span>
+
+                <div
+                    class="condition-name"
+                    style="
+                        color:{color};
+                    "
+                >
+                    {name}
                 </div>
-                <div class="data-row">
-                    <span class="data-key">Classification Certainty</span>
-                    <span class="data-val">{conf_val:.2f}%</span>
+
+                <div class="condition-description">
+                    {description}
                 </div>
-                <div class="data-row">
-                    <span class="data-key">Assessed Risk Status</span>
-                    <span class="data-val" style="color: {risk_col};">{risk_val}</span>
-                </div>
+
             </div>
             """
         )
+
 
     with right:
+
+        failure = get_failure(result)
+
+        diagnosis_color = (
+            "#fbbf24"
+            if get_anomaly(result)
+            else "#34d399"
+        )
+
+        diagnosis_symbol = (
+            "⚠"
+            if get_anomaly(result)
+            else "✓"
+        )
+
         render_html(
             f"""
-            <div class="glass-panel">
-                <div class="panel-title">Prescriptive Intervention Plan</div>
-                <div class="panel-heading">Recommended Maintenance Action</div>
-                <div style="color: #cbd5e1; font-size: 0.85rem; line-height: 1.6; margin-bottom: 18px;">
-                    {get_recommendation(result)}
+            <div class="card">
+
+                <div class="card-heading">
+                    AI Diagnosis
                 </div>
-                <div style="padding: 12px; background: rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid rgba(255,255,255,0.05);">
-                    <div style="font-size: 0.68rem; color: #64748b; font-weight: 700; text-transform: uppercase;">
-                        Last Evaluation Timestamp
-                    </div>
-                    <div style="font-size: 0.85rem; color: #818cf8; font-family: 'JetBrains Mono', monospace; font-weight: 600; margin-top: 2px;">
-                        {st.session_state.last_analyzed if st.session_state.last_analyzed else "Awaiting first execution"}
-                    </div>
+
+                <div
+                    class="diagnosis-title"
+                    style="
+                        color:{diagnosis_color};
+                    "
+                >
+                    {diagnosis_symbol}
+                    {failure}
                 </div>
+
+
+                <div class="detail">
+
+                    <span class="detail-label">
+                        Component
+                    </span>
+
+                    <span class="detail-value">
+                        {get_component(result)}
+                    </span>
+
+                </div>
+
+
+                <div class="detail">
+
+                    <span class="detail-label">
+                        Severity
+                    </span>
+
+                    <span class="detail-value">
+                        {get_severity(result)}
+                    </span>
+
+                </div>
+
+
+                <div class="detail">
+
+                    <span class="detail-label">
+                        Confidence
+                    </span>
+
+                    <span class="detail-value">
+                        {confidence:.2f}%
+                    </span>
+
+                </div>
+
+
+                <div class="detail">
+
+                    <span class="detail-label">
+                        Risk
+                    </span>
+
+                    <span
+                        class="detail-value"
+                        style="
+                            color:{get_risk_color(result)};
+                        "
+                    >
+                        {get_risk_icon(result)}
+                        {risk}
+                    </span>
+
+                </div>
+
+
+                <div class="recommendation">
+
+                    <div class="recommendation-title">
+                        Recommended Action
+                    </div>
+
+                    <div class="recommendation-text">
+                        {get_recommendation(result)}
+                    </div>
+
+                </div>
+
             </div>
             """
         )
 
-    # ---------------- EXECUTIVE CHARTS ----------------
-    if st.session_state.history:
-        render_html(
-            """
-            <div style="margin-top: 28px; margin-bottom: 10px;">
-                <div style="font-size: 1.1rem; font-weight: 700; color: #f8fafc;">Historical Inspection Trends</div>
-                <div style="font-size: 0.78rem; color: #64748b;">Aggregation of session diagnostic runs.</div>
-            </div>
-            """
-        )
-        hist_col1, hist_col2 = st.columns(2, gap="medium")
 
-        with hist_col1:
-            failures = [item["failure"] for item in st.session_state.history]
-            fail_counts = {}
-            for f in failures:
-                fail_counts[f] = fail_counts.get(f, 0) + 1
-            
-            fig_pie = px.pie(
-                names=list(fail_counts.keys()),
-                values=list(fail_counts.values()),
-                title="Historical Failure Breakdown",
-                hole=0.45,
-                color_discrete_sequence=px.colors.qualitative.Pastel
-            )
-            fig_pie.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#f8fafc"),
-                margin=dict(l=20, r=20, t=40, b=20)
-            )
-            st.plotly_chart(fig_pie, use_container_width=True)
+    # --------------------------------------------------------
+    # ANALYSIS
+    # --------------------------------------------------------
 
-        with hist_col2:
-            conf_vals = [item["confidence"] for item in st.session_state.history[::-1]]
-            time_vals = [item["time"] for item in st.session_state.history[::-1]]
-            
-            fig_line = go.Figure()
-            fig_line.add_trace(go.Scatter(
-                x=time_vals, 
-                y=conf_vals, 
-                mode='lines+markers',
-                line=dict(color='#818cf8', width=3),
-                marker=dict(size=8, color='#6366f1')
-            ))
-            fig_line.update_layout(
-                title="AI Model Certainty Timeline",
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#f8fafc"),
-                xaxis=dict(gridcolor='rgba(255,255,255,0.05)', title="Timestamp"),
-                yaxis=dict(gridcolor='rgba(255,255,255,0.05)', title="Confidence (%)", range=[0, 100]),
-                margin=dict(l=20, r=20, t=40, b=20)
-            )
-            st.plotly_chart(fig_line, use_container_width=True)
-
-    # ---------------- INTERACTIVE ANALYZER FORM ----------------
-    render_html(
-        """
-        <div style="margin-top: 28px; margin-bottom: 10px;">
-            <div style="font-size: 1.1rem; font-weight: 700; color: #f8fafc;">Execute Log Diagnostic</div>
-            <div style="font-size: 0.78rem; color: #64748b;">Input technical observation log or select a preset sample for testing.</div>
-        </div>
-        """
+    section(
+        "Analyze Maintenance Log",
+        "Enter a machine observation and run the AI pipeline."
     )
 
-    row1_col1, row1_col2, row1_col3 = st.columns(3)
-
-    with row1_col1:
-        if st.button("Sample: No Failure", key="sample_nofail", use_container_width=True):
-            st.session_state.log_input_text = "Pump inspected, no leaks or unusual sounds observed. All operating parameters within normal limits."
-            st.rerun()
-
-    with row1_col2:
-        if st.button("Sample: Pre-Failure Warning", key="sample_prefail", use_container_width=True):
-            st.session_state.log_input_text = "Minor thermal elevation recorded during high load cycle. Inspection recommended during next planned shutdown."
-            st.rerun()
-
-    with row1_col3:
-        if st.button("Sample: Bearing Failure", key="sample_bearing", use_container_width=True):
-            st.session_state.log_input_text = "High thermal signature recorded on drive motor shaft. Loud grinding noise detected in bearing assembly."
-            st.rerun()
-
-    row2_col1, row2_col2, row2_col3 = st.columns(3)
-
-    with row2_col1:
-        if st.button("Sample: Electrical Fault", key="sample_electrical", use_container_width=True):
-            st.session_state.log_input_text = "Frequent voltage spikes and current fluctuations observed in main power supply unit causing breaker trips."
-            st.rerun()
-
-    with row2_col2:
-        if st.button("Sample: Lubrication Failure", key="sample_lube", use_container_width=True):
-            st.session_state.log_input_text = "Oil pressure drop in main gearbox reservoir. Low lubricant levels and fluid contamination detected."
-            st.rerun()
-
-    with row2_col3:
-        if st.button("Sample: Mechanical Fault", key="sample_mech", use_container_width=True):
-            st.session_state.log_input_text = "Severe shaft misalignment and excessive mechanical vibration detected across primary drive assembly."
-            st.rerun()
-            
-    log_input = st.text_area(
-        "Log Input",
-        key="log_input_text",
-        placeholder="e.g. Pump inspected, no leaks or unusual sounds observed...",
-        height=100,
+    log = st.text_area(
+        "Maintenance Log",
+        placeholder=(
+            "Example: Loud grinding noise from motor shaft "
+            "bearing, vibration increasing rapidly..."
+        ),
+        height=125,
         label_visibility="collapsed"
     )
 
-    if st.button("Run Multi-Model AI Diagnostic", type="primary", use_container_width=True):
-        if not log_input.strip():
-            st.warning("Please enter a maintenance log entry.")
+    if st.button(
+        "Analyze Maintenance Log",
+        type="primary",
+        use_container_width=True
+    ):
+
+        if not log.strip():
+
+            st.warning(
+                "Please enter a maintenance log."
+            )
+
         else:
-            with st.spinner("Analyzing log through DistilBERT & Autoencoder models..."):
+
+            with st.spinner(
+                "Analyzing AI pipeline..."
+            ):
+
                 try:
-                    res = predict_log(log_input)
-                    save_result(res)
+
+                    result = predict_log(
+                        log
+                    )
+
+                    save_result(
+                        result
+                    )
+
                     st.rerun()
+
                 except requests.exceptions.ConnectionError:
-                    st.error("Backend microservice API is currently unreachable.")
+
+                    st.error(
+                        "Backend API is not running."
+                    )
+
                 except Exception as e:
-                    st.error(f"Execution Error: {e}")
+
+                    st.error(
+                        f"Prediction error: {e}"
+                    )
 
 
 # ============================================================
-# PAGE 2: AI LOG ANALYZER
+# AI LOG ANALYZER
 # ============================================================
 
 elif selected_page == "AI Log Analyzer":
 
-    page_header("AI Log Analyzer", "Deep-dive NLP text classification and anomaly detection")
-
-    render_html(
-        """
-        <div style="margin-bottom: 10px;">
-            <div style="font-size: 0.95rem; font-weight: 700; color: #f8fafc;">Autoencoder Preset Samples</div>
-            <div style="font-size: 0.75rem; color: #64748b;">Select a preset telemetry sample to test anomaly reconstruction.</div>
-        </div>
-        """
+    page_header(
+        "AI Log Analyzer",
+        "Failure classification and anomaly detection"
     )
 
-    ai_col1, ai_col2, ai_col3 = st.columns(3)
-
-    with ai_col1:
-        if st.button("Sample: Normal", key="ai_sample_normal", use_container_width=True):
-            st.session_state.ai_log_input_text = AE_PRESETS["normal"]
-            st.rerun()
-
-    with ai_col2:
-        if st.button("Sample: Borderline", key="ai_sample_border", use_container_width=True):
-            st.session_state.ai_log_input_text = AE_PRESETS["borderline"]
-            st.rerun()
-
-    with ai_col3:
-        if st.button("Sample: Anomaly", key="ai_sample_anomaly", use_container_width=True):
-            st.session_state.ai_log_input_text = AE_PRESETS["anomaly"]
-            st.rerun()
-
-    log_input = st.text_area(
-        "Maintenance Log Input",
-        key="ai_log_input_text",
-        placeholder="Describe symptoms, thermographic reads, vibration patterns, or mechanical noises...",
-        height=140
+    section(
+        "Maintenance Log",
+        "Describe symptoms, inspection results, noise, vibration, or temperature changes."
     )
 
-    btn_col1, btn_col2 = st.columns([3, 1])
+    log = st.text_area(
+        "Maintenance Log",
+        placeholder=(
+            "Example: Loud grinding noise from motor shaft "
+            "bearing. Vibration increasing and temperature rising."
+        ),
+        height=180
+    )
 
-    with btn_col1:
-        run_analysis = st.button("Run AI Diagnosis", type="primary", use_container_width=True)
+    col1, col2 = st.columns(
+        [3, 1]
+    )
 
-    with btn_col2:
-        clear_analysis = st.button("Clear Dashboard", use_container_width=True)
+    with col1:
 
-    if clear_analysis:
-        st.session_state.ai_log_input_text = ""
+        analyze = st.button(
+            "Run AI Diagnosis",
+            type="primary",
+            use_container_width=True
+        )
+
+    with col2:
+
+        clear = st.button(
+            "Clear",
+            use_container_width=True
+        )
+
+
+    if clear:
+
         st.session_state.last_result = None
+
         st.session_state.last_analyzed = None
+
         st.rerun()
 
-    if run_analysis:
-        if not log_input.strip():
-            st.warning("Please input observation log text.")
+
+    if analyze:
+
+        if not log.strip():
+
+            st.warning(
+                "Enter a maintenance log."
+            )
+
         else:
-            with st.spinner("Evaluating models..."):
+
+            with st.spinner(
+                "Running AI models..."
+            ):
+
                 try:
-                    res = predict_log(log_input)
-                    save_result(res)
+
+                    result = predict_log(
+                        log
+                    )
+
+                    save_result(
+                        result
+                    )
+
                 except requests.exceptions.ConnectionError:
-                    st.error("Backend microservice API is currently unreachable.")
+
+                    st.error(
+                        "Backend API is not running."
+                    )
+
                 except Exception as e:
-                    st.error(f"Execution Error: {e}")
 
-    res = st.session_state.last_result
+                    st.error(
+                        f"Prediction error: {e}"
+                    )
 
-    if res:
+
+    result = st.session_state.last_result
+
+
+    if result:
+
+        section(
+            "Diagnosis Result",
+            f"Last analyzed: {st.session_state.last_analyzed}"
+        )
+
+        cols = st.columns(4)
+
+        values = [
+            (
+                "Failure Type",
+                get_failure(result)
+            ),
+            (
+                "Component",
+                get_component(result)
+            ),
+            (
+                "Confidence",
+                f"{get_confidence(result):.2f}%"
+            ),
+            (
+                "Severity",
+                get_severity(result)
+            )
+        ]
+
+        for col, (label, value) in zip(
+            cols,
+            values
+        ):
+
+            with col:
+
+                render_html(
+                    f"""
+                    <div class="metric">
+
+                        <div class="metric-label">
+                            {label}
+                        </div>
+
+                        <div class="metric-value">
+                            {value}
+                        </div>
+
+                    </div>
+                    """
+                )
+
+
+        section(
+            "Risk Assessment"
+        )
+
         render_html(
             f"""
-            <div class="stat-grid" style="margin-top: 24px;">
-                <div class="stat-card">
-                    <div class="stat-label">Predicted Failure</div>
-                    <div class="stat-value">{get_failure(res)}</div>
+            <div class="risk">
+
+                <div class="risk-label">
+                    Current Risk
                 </div>
-                <div class="stat-card">
-                    <div class="stat-label">Target Subsystem</div>
-                    <div class="stat-value">{get_component(res)}</div>
+
+                <div
+                    class="risk-value"
+                    style="
+                        color:{get_risk_color(result)};
+                    "
+                >
+                    {get_risk_icon(result)}
+                    {get_risk(result)}
                 </div>
-                <div class="stat-card">
-                    <div class="stat-label">Model Confidence</div>
-                    <div class="stat-value">{get_confidence(res):.2f}%</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">Failure Severity</div>
-                    <div class="stat-value">{get_severity(res)}</div>
-                </div>
+
             </div>
             """
         )
 
-        error = float(res.get("reconstruction_error", 0))
-        threshold = float(res.get("anomaly_threshold", 1))
-        maximum = max(error, threshold, 0.00001)
 
-        err_pct = min((error / maximum) * 100, 100)
-        thresh_pct = min((threshold / maximum) * 100, 100)
-
-        is_anom = get_anomaly(res)
-        anom_color = "#fbbf24" if is_anom else "#34d399"
-
-        fig_bar = go.Figure()
-        fig_bar.add_trace(go.Bar(
-            y=['Learned Threshold', 'Reconstruction Error'],
-            x=[threshold, error],
-            orientation='h',
-            marker=dict(color=['#6366f1', anom_color])
-        ))
-        fig_bar.update_layout(
-            title="Autoencoder Reconstruction Error vs Threshold",
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#f8fafc"),
-            xaxis=dict(gridcolor='rgba(255,255,255,0.05)'),
-            height=200,
-            margin=dict(l=20, r=20, t=40, b=20)
+        section(
+            "Anomaly Detection",
+            "Autoencoder reconstruction error compared with learned threshold."
         )
-        st.plotly_chart(fig_bar, use_container_width=True)
+
+        error = float(
+            result.get(
+                "reconstruction_error",
+                0
+            )
+        )
+
+        threshold = float(
+            result.get(
+                "anomaly_threshold",
+                1
+            )
+        )
+
+        maximum = max(
+            error,
+            threshold,
+            0.000001
+        )
+
+        error_width = min(
+            error / maximum * 100,
+            100
+        )
+
+        threshold_width = min(
+            threshold / maximum * 100,
+            100
+        )
+
+        is_anomaly = get_anomaly(
+            result
+        )
+
+        color = (
+            "#fbbf24"
+            if is_anomaly
+            else "#34d399"
+        )
 
         render_html(
             f"""
-            <div class="glass-panel">
-                <div class="panel-title">Autoencoder Anomaly Detection Engine</div>
-                <div style="font-size: 1.1rem; font-weight: 700; color: {anom_color}; margin-bottom: 16px;">
-                    {"Anomaly Detected (Unusual Signal Dynamics)" if is_anom else "Operations Normal (Signal Within Model Threshold)"}
+            <div class="
+                anomaly
+                {
+                    'anomaly-warning'
+                    if is_anomaly
+                    else 'anomaly-normal'
+                }
+            ">
+
+                <div class="data-label">
+                    Autoencoder Status
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                    <div>
-                        <div class="data-key">Reconstruction Error Value</div>
-                        <div class="data-val" style="font-size: 1.1rem; margin-top: 4px;">{error:.6f}</div>
-                        <div class="bar-bg">
-                            <div class="bar-fill" style="width: {err_pct}%; background: {anom_color};"></div>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="data-key">Learned Anomaly Threshold</div>
-                        <div class="data-val" style="font-size: 1.1rem; margin-top: 4px;">{threshold:.6f}</div>
-                        <div class="bar-bg">
-                            <div class="bar-fill" style="width: {thresh_pct}%; background: #6366f1;"></div>
-                        </div>
-                    </div>
+                <div
+                    class="anomaly-title"
+                    style="
+                        color:{color};
+                    "
+                >
+                    {
+                        "⚠ Anomaly Detected"
+                        if is_anomaly
+                        else "✓ No Anomaly Detected"
+                    }
                 </div>
+
+
+                <div class="data-label">
+                    Reconstruction Error
+                </div>
+
+                <div class="data-value">
+                    {error:.6f}
+                </div>
+
+                <div class="progress">
+
+                    <div
+                        style="
+                            width:{error_width}%;
+                            height:100%;
+                            background:{color};
+                        "
+                    ></div>
+
+                </div>
+
+
+                <div class="data-label">
+                    Learned Threshold
+                </div>
+
+                <div class="data-value">
+                    {threshold:.6f}
+                </div>
+
+                <div class="progress">
+
+                    <div
+                        style="
+                            width:{threshold_width}%;
+                            height:100%;
+                            background:#6366f1;
+                        "
+                    ></div>
+
+                </div>
+
+            </div>
+            """
+        )
+
+
+        section(
+            "Recommended Maintenance Action"
+        )
+
+        render_html(
+            f"""
+            <div class="card">
+
+                <div class="recommendation-title">
+                    Maintenance Recommendation
+                </div>
+
+                <div class="recommendation-text">
+                    {get_recommendation(result)}
+                </div>
+
             </div>
             """
         )
 
 
 # ============================================================
-# PAGE 3: DYNAMIC FLEET & MULTI-LOG MACHINE RISK MODEL
+# MACHINE RISK (WITH 10 UNHEALTHY LOGS POPULATE BUTTON & NO THRESHOLD LINE)
 # ============================================================
 
 elif selected_page == "Machine Risk":
 
     page_header(
-        "Fleet Multi-Log Risk Engine", 
+        "Fleet Multi-Log Risk Engine",
         "Configure industrial machine fleet and analyze operational log sequences to project failure timelines"
     )
 
     render_html(
         """
-        <div class="glass-panel">
-            <div class="panel-title">Fleet Setup</div>
+        <div class="card">
+            <div class="card-heading">Fleet Setup</div>
             <div style="color: #cbd5e1; font-size: 0.85rem; margin-bottom: 12px;">
                 Specify total machine count in your facility to configure diagnostic slots.
             </div>
@@ -1298,29 +1868,15 @@ elif selected_page == "Machine Risk":
     )
 
     selected_machine = st.selectbox("Target Machine", machine_options)
-    machine_idx = machine_options.index(selected_machine)
 
     if selected_machine not in st.session_state.fleet_data:
         st.session_state.fleet_data[selected_machine] = [""] * 10
 
-    preset_col1, preset_col2 = st.columns(2)
-
-    with preset_col1:
-        if st.button(f"Populate 10 Healthy Logs ({selected_machine})", key="btn_green_healthy", use_container_width=True):
-            healthy_seq = get_machine_logs(machine_idx, is_degrading=False)
-            st.session_state.fleet_data[selected_machine] = healthy_seq
-
-            for idx, text in enumerate(healthy_seq):
-                st.session_state[f"{selected_machine}_log_{idx}"] = text
-            st.rerun()
-
-    with preset_col2:
-        if st.button("Populate Best Demo Sequence", key="btn_blue_best", use_container_width=True):
-            st.session_state.fleet_data[selected_machine] = list(LSTM_BEST_SEQUENCE)
-
-            for idx, text in enumerate(LSTM_BEST_SEQUENCE):
-                st.session_state[f"{selected_machine}_log_{idx}"] = text
-            st.rerun()
+    if st.button("Populate 10 Unhealthy Logs", key="btn_unhealthy_logs", use_container_width=True):
+        st.session_state.fleet_data[selected_machine] = list(LSTM_UNHEALTHY_SEQUENCE)
+        for idx, text in enumerate(LSTM_UNHEALTHY_SEQUENCE):
+            st.session_state[f"{selected_machine}_log_{idx}"] = text
+        st.rerun()
 
     with st.expander(f"View / Edit 10 Sequence Logs for {selected_machine}", expanded=True):
         updated_logs = []
@@ -1390,13 +1946,10 @@ elif selected_page == "Machine Risk":
         with res_col1:
             render_html(
                 f"""
-                <div class="stat-card" style="background: {hex_to_rgba(m_res['risk_color'], 0.10)}; border: 1px solid {hex_to_rgba(m_res['risk_color'], 0.40)};">
-                    <div class="stat-header">
-                        <span class="stat-label">Failure Probability</span>
-                        <span style="color: {m_res['risk_color']};">●</span>
-                    </div>
-                    <div class="stat-value" style="color: {m_res['risk_color']};">{m_res['risk_pct']:.1f}%</div>
-                    <div class="stat-sub">Based on {m_res['total_logs']} sequential logs</div>
+                <div class="metric" style="background: rgba(18, 24, 38, 0.7); border: 1px solid {m_res['risk_color']};">
+                    <div class="metric-label">Failure Probability</div>
+                    <div class="metric-value" style="color: {m_res['risk_color']};">{m_res['risk_pct']:.1f}%</div>
+                    <div style="font-size:0.65rem; color:#94a3b8; margin-top:4px;">Based on {m_res['total_logs']} sequential logs</div>
                 </div>
                 """
             )
@@ -1404,13 +1957,10 @@ elif selected_page == "Machine Risk":
         with res_col2:
             render_html(
                 f"""
-                <div class="stat-card" style="background: {hex_to_rgba(m_res['risk_color'], 0.10)}; border: 1px solid {hex_to_rgba(m_res['risk_color'], 0.40)};">
-                    <div class="stat-header">
-                        <span class="stat-label">Estimated Time To Failure</span>
-                        <span style="color: #818cf8;">●</span>
-                    </div>
-                    <div class="stat-value">{m_res['rul_days']} Days</div>
-                    <div class="stat-sub">Rule-based estimate from model risk (~{m_res['rul_hours']} h)</div>
+                <div class="metric" style="background: rgba(18, 24, 38, 0.7);">
+                    <div class="metric-label">Estimated Time To Failure</div>
+                    <div class="metric-value">{m_res['rul_days']} Days</div>
+                    <div style="font-size:0.65rem; color:#94a3b8; margin-top:4px;">~{m_res['rul_hours']} operating hours</div>
                 </div>
                 """
             )
@@ -1419,13 +1969,10 @@ elif selected_page == "Machine Risk":
             status_text = "CRITICAL ACTION" if m_res['risk_pct'] > 60 else "SCHEDULE CHECK" if m_res['risk_pct'] > 35 else "HEALTHY"
             render_html(
                 f"""
-                <div class="stat-card" style="background: {hex_to_rgba(m_res['risk_color'], 0.10)}; border: 1px solid {hex_to_rgba(m_res['risk_color'], 0.40)};">
-                    <div class="stat-header">
-                        <span class="stat-label">Maintenance Verdict</span>
-                        <span style="color: {m_res['risk_color']};">●</span>
-                    </div>
-                    <div class="stat-value" style="color: {m_res['risk_color']};">{status_text}</div>
-                    <div class="stat-sub">Rule-based decision from model risk</div>
+                <div class="metric" style="background: rgba(18, 24, 38, 0.7); border: 1px solid {m_res['risk_color']};">
+                    <div class="metric-label">Maintenance Verdict</div>
+                    <div class="metric-value" style="color: {m_res['risk_color']};">{status_text}</div>
+                    <div style="font-size:0.65rem; color:#94a3b8; margin-top:4px;">Rule-based decision from risk</div>
                 </div>
                 """
             )
@@ -1433,6 +1980,7 @@ elif selected_page == "Machine Risk":
         steps = [f"Log #{i+1}" for i in range(m_res['total_logs'])]
         trend_data = m_res['trend']
 
+        import plotly.graph_objects as go
         fig_trend = go.Figure()
         fig_trend.add_trace(go.Scatter(
             x=steps,
@@ -1444,14 +1992,7 @@ elif selected_page == "Machine Risk":
             hovertemplate="%{x}<br>Risk: %{y:.1f}%<extra></extra>",
             name="Degradation Trend"
         ))
-        fig_trend.add_hline(
-            y=50,
-            line_dash="dash",
-            line_color="#94a3b8",
-            annotation_text="Model threshold (50%)",
-            annotation_position="top left",
-            annotation_font_color="#94a3b8"
-        )
+        # Threshold line removed per user request
         fig_trend.update_layout(
             title=f"<b>Degradation Sequence Projection ({selected_machine})</b>",
             paper_bgcolor="rgba(0,0,0,0)",
@@ -1466,132 +2007,346 @@ elif selected_page == "Machine Risk":
 
 
 # ============================================================
-# PAGE 4: PREDICTION HISTORY
+# HISTORY
 # ============================================================
 
 elif selected_page == "Prediction History":
 
-    page_header("Prediction History", "Session inspection audit trail")
+    page_header(
+        "Prediction History",
+        "Previous machine analysis results"
+    )
 
     if not st.session_state.history:
+
         render_html(
             """
-            <div class="glass-panel" style="text-align: center; padding: 50px;">
-                <div style="color: #64748b; font-size: 0.85rem;">No historical predictions in current session.</div>
+            <div class="card"
+                 style="
+                    text-align:center;
+                    padding:60px;
+                 ">
+
+                <div style="
+                    color:#64748b;
+                    font-size:0.8rem;
+                ">
+                    No prediction history available.
+                </div>
+
             </div>
             """
         )
+
     else:
-        for idx, item in enumerate(st.session_state.history):
+
+        for item in st.session_state.history:
+
             render_html(
                 f"""
-                <div class="glass-panel" style="padding: 18px 24px; margin-bottom: 12px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="history">
+
+                    <div
+                        style="
+                            display:flex;
+                            justify-content:
+                            space-between;
+                        "
+                    >
+
                         <div>
-                            <span style="font-weight: 700; font-size: 1.05rem; color: #f8fafc;">{item["failure"]}</span>
-                            <span style="color: #64748b; font-size: 0.72rem; margin-left: 10px; font-family: 'JetBrains Mono', monospace;">
+
+                            <div class="history-title">
+                                {item["failure"]}
+                            </div>
+
+                            <div class="history-time">
                                 {item["time"]}
-                            </span>
+                            </div>
+
                         </div>
-                        <span style="color: {'#fbbf24' if item['anomaly'] == 'Detected' else '#34d399'}; font-size: 0.75rem; font-weight: 700;">
-                            ● Anomaly: {item["anomaly"]}
-                        </span>
+
+                        <div
+                            style="
+                                color:
+                                {
+                                    '#fbbf24'
+                                    if item["anomaly"]
+                                    == "Detected"
+                                    else '#34d399'
+                                };
+                                font-size:0.6rem;
+                                font-weight:700;
+                            "
+                        >
+                            ● {item["anomaly"]}
+                        </div>
+
                     </div>
-                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.05);">
-                        <div><span class="data-key">Subsystem</span><br><span class="data-val">{item["component"]}</span></div>
-                        <div><span class="data-key">Severity</span><br><span class="data-val">{item["severity"]}</span></div>
-                        <div><span class="data-key">Certainty</span><br><span class="data-val">{item["confidence"]:.2f}%</span></div>
-                        <div><span class="data-key">Risk Level</span><br><span class="data-val">{item["risk"]}</span></div>
+
+
+                    <div style="
+                        display:grid;
+                        grid-template-columns:
+                        repeat(4,1fr);
+                        gap:20px;
+                        margin-top:14px;
+                    ">
+
+                        <div>
+
+                            <div class="data-label">
+                                Component
+                            </div>
+
+                            <div class="detail-value">
+                                {item["component"]}
+                            </div>
+
+                        </div>
+
+
+                        <div>
+
+                            <div class="data-label">
+                                Severity
+                            </div>
+
+                            <div class="detail-value">
+                                {item["severity"]}
+                            </div>
+
+                        </div>
+
+
+                        <div>
+
+                            <div class="data-label">
+                                Confidence
+                            </div>
+
+                            <div class="detail-value">
+                                {item["confidence"]:.2f}%
+                            </div>
+
+                        </div>
+
+
+                        <div>
+
+                            <div class="data-label">
+                                Risk
+                            </div>
+
+                            <div class="detail-value">
+                                {item["risk"]}
+                            </div>
+
+                        </div>
+
                     </div>
+
                 </div>
                 """
             )
 
-        if st.button("Clear History Audit Log", use_container_width=True):
+
+        if st.button(
+            "Clear History",
+            use_container_width=True
+        ):
+
             st.session_state.history = []
+
             st.rerun()
 
 
 # ============================================================
-# PAGE 5: MODEL ARCHITECTURE
+# MODEL PIPELINE
 # ============================================================
 
-elif selected_page == "Model Architecture":
+elif selected_page == "Model Pipeline":
 
-    page_header("Model Architecture", "Technical topology of integrated multi-model pipeline")
+    page_header(
+        "Model Pipeline",
+        "Predictive maintenance AI architecture"
+    )
 
-    # ---------------- 1. PIPELINE FLOW / CONNECTOR BARS ----------------
+    section(
+        "AI Pipeline",
+        "From maintenance log to maintenance recommendation."
+    )
 
     render_html(
         """
-        <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 24px;">
-            <div class="glass-panel" style="text-align: center; padding: 18px 10px;">
-                <div style="color: #818cf8; font-size: 0.65rem; font-weight: 800;">STEP 01</div>
-                <div style="height: 2px; width: 28px; background: #6366f1; margin: 12px auto;"></div>
-                <div style="font-size: 0.75rem; font-weight: 600; color: #f8fafc;">Text Log Input</div>
+        <div class="pipeline">
+
+            <div class="pipeline-card">
+                <div class="pipeline-step">
+                    01
+                </div>
+
+                <div class="pipeline-icon">
+                    📄
+                </div>
+
+                <div class="pipeline-name">
+                    Maintenance Log
+                </div>
             </div>
-            <div class="glass-panel" style="text-align: center; padding: 18px 10px;">
-                <div style="color: #818cf8; font-size: 0.65rem; font-weight: 800;">STEP 02</div>
-                <div style="height: 2px; width: 28px; background: #6366f1; margin: 12px auto;"></div>
-                <div style="font-size: 0.75rem; font-weight: 600; color: #f8fafc;">DistilBERT NLP</div>
+
+
+            <div class="pipeline-card">
+                <div class="pipeline-step">
+                    02
+                </div>
+
+                <div class="pipeline-icon">
+                    NLP
+                </div>
+
+                <div class="pipeline-name">
+                    DistilBERT
+                </div>
             </div>
-            <div class="glass-panel" style="text-align: center; padding: 18px 10px;">
-                <div style="color: #818cf8; font-size: 0.65rem; font-weight: 800;">STEP 03</div>
-                <div style="height: 2px; width: 28px; background: #6366f1; margin: 12px auto;"></div>
-                <div style="font-size: 0.75rem; font-weight: 600; color: #f8fafc;">Autoencoder</div>
+
+
+            <div class="pipeline-card">
+                <div class="pipeline-step">
+                    03
+                </div>
+
+                <div class="pipeline-icon">
+                    AE
+                </div>
+
+                <div class="pipeline-name">
+                    Autoencoder
+                </div>
             </div>
-            <div class="glass-panel" style="text-align: center; padding: 18px 10px;">
-                <div style="color: #818cf8; font-size: 0.65rem; font-weight: 800;">STEP 04</div>
-                <div style="height: 2px; width: 28px; background: #6366f1; margin: 12px auto;"></div>
-                <div style="font-size: 0.75rem; font-weight: 600; color: #f8fafc;">LSTM Engine</div>
+
+
+            <div class="pipeline-card">
+                <div class="pipeline-step">
+                    04
+                </div>
+
+                <div class="pipeline-icon">
+                    LSTM
+                </div>
+
+                <div class="pipeline-name">
+                    Risk Prediction
+                </div>
             </div>
-            <div class="glass-panel" style="text-align: center; padding: 18px 10px;">
-                <div style="color: #818cf8; font-size: 0.65rem; font-weight: 800;">STEP 05</div>
-                <div style="height: 2px; width: 28px; background: #6366f1; margin: 12px auto;"></div>
-                <div style="font-size: 0.75rem; font-weight: 600; color: #f8fafc;">Prescriptive Action</div>
+
+
+            <div class="pipeline-card">
+                <div class="pipeline-step">
+                    05
+                </div>
+
+                <div class="pipeline-icon">
+                    ✓
+                </div>
+
+                <div class="pipeline-name">
+                    Action
+                </div>
             </div>
+
         </div>
         """
     )
 
-    col1, col2 = st.columns(2, gap="medium")
+    st.write("")
 
-    with col1:
+    left, right = st.columns(
+        2,
+        gap="large"
+    )
+
+    with left:
+
         render_html(
             """
-            <div class="glass-panel">
-                <div class="panel-title">Classification Layer</div>
-                <div class="panel-heading">DistilBERT Transformer</div>
-                <div style="color: #cbd5e1; font-size: 0.82rem; line-height: 1.6;">
-                    Fine-tuned transformer model for domain-specific text classification. Categorizes unstructured maintenance logs into structured failure modes, severity levels, and target mechanical components.
+            <div class="card">
+
+                <div class="card-heading">
+                    Failure Classification
                 </div>
+
+                <div class="card-title">
+                    DistilBERT
+                </div>
+
+                <div class="recommendation-text">
+                    Classifies maintenance text and identifies
+                    the predicted failure condition.
+                </div>
+
             </div>
-            <div class="glass-panel">
-                <div class="panel-title">Anomaly Layer</div>
-                <div class="panel-heading">Autoencoder Reconstruction</div>
-                <div style="color: #cbd5e1; font-size: 0.82rem; line-height: 1.6;">
-                    Neural network trained on normal operating log embeddings. Flags rare or unseen failure signatures by comparing signal reconstruction errors against a learned baseline threshold.
+
+            <br>
+
+            <div class="card">
+
+                <div class="card-heading">
+                    Anomaly Detection
                 </div>
+
+                <div class="card-title">
+                    Autoencoder
+                </div>
+
+                <div class="recommendation-text">
+                    Detects unusual machine behavior using
+                    reconstruction error and threshold comparison.
+                </div>
+
             </div>
             """
         )
 
-    with col2:
+
+    with right:
+
         render_html(
             """
-            <div class="glass-panel">
-                <div class="panel-title">Sequential Risk Engine</div>
-                <div class="panel-heading">LSTM Network</div>
-                <div style="color: #cbd5e1; font-size: 0.82rem; line-height: 1.6;">
-                    Evaluates temporal telemetry sequences and historical machine operational logs to project probabilistic risk of future failure.
+            <div class="card">
+
+                <div class="card-heading">
+                    Failure Prediction
                 </div>
+
+                <div class="card-title">
+                    LSTM
+                </div>
+
+                <div class="recommendation-text">
+                    Uses historical machine sequences to estimate
+                    future equipment failure risk.
+                </div>
+
             </div>
-            <div class="glass-panel">
-                <div class="panel-title">Action Layer</div>
-                <div class="panel-heading">Prescriptive Rule Engine</div>
-                <div style="color: #cbd5e1; font-size: 0.82rem; line-name: 1.6;">
-                    Translates multi-model probabilistic outputs into clear, non-technical maintenance instructions for field engineers and operational managers.
+
+            <br>
+
+            <div class="card">
+
+                <div class="card-heading">
+                    Final Decision
                 </div>
+
+                <div class="card-title">
+                    Maintenance Recommendation
+                </div>
+
+                <div class="recommendation-text">
+                    Converts AI predictions into a practical
+                    maintenance recommendation.
+                </div>
+
             </div>
             """
         )
@@ -1603,8 +2358,15 @@ elif selected_page == "Model Architecture":
 
 render_html(
     """
-    <div style="text-align: center; color: #475569; font-size: 0.72rem; margin-top: 50px; padding-top: 20px; border-top: 1px solid rgba(255, 255, 255, 0.05);">
-        PredictAI Industrial Intelligence Console · Enterprise Analytics Module
+    <div style="
+        text-align:center;
+        color:#475569;
+        font-size:0.6rem;
+        margin-top:60px;
+        padding-top:20px;
+        border-top:1px solid rgba(255, 255, 255, 0.05);
+    ">
+        PredictAI · Predictive Maintenance Platform
     </div>
     """
 )
