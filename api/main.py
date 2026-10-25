@@ -242,12 +242,22 @@ def detect_component(log_text: str) -> str:
 
 
 def detect_severity(log_text: str) -> str:
-    """Rule-based severity from keyword presence in log text"""
+    """Rule-based severity from keyword presence in log text (ignoring negations like 'no leaks')"""
     text_lower = log_text.lower()
-    if any(word in text_lower for word in HIGH_SEVERITY_KEYWORDS):
-        return "High"
-    if any(word in text_lower for word in MEDIUM_SEVERITY_KEYWORDS):
-        return "Medium"
+    
+    for word in HIGH_SEVERITY_KEYWORDS:
+        if word in text_lower:
+            # Ignore if the keyword is negated (e.g., "no leak", "no leaks", "without leak")
+            if f"no {word}" in text_lower or f"no {word}s" in text_lower or f"without {word}" in text_lower:
+                continue
+            return "High"
+            
+    for word in MEDIUM_SEVERITY_KEYWORDS:
+        if word in text_lower:
+            if f"no {word}" in text_lower or f"no {word}s" in text_lower or f"without {word}" in text_lower:
+                continue
+            return "Medium"
+            
     return "Low"
 
 
@@ -259,8 +269,6 @@ def compute_risk_level(failure_type: str, severity: str, anomaly_status: str, co
     show elevated risk unless the anomaly detector independently flags it
     with a high-confidence prediction.
     """
-    # "No Failure" case: only escalate if BOTH anomaly detected AND
-    # BERT is confident about it — avoids false alarms from borderline cases
     if failure_type == "No Failure":
         if anomaly_status == "anomaly" and confidence > 0.7:
             return "🟡 Moderate", "Review Recommended"
