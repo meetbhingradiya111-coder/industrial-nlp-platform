@@ -1366,7 +1366,7 @@ elif selected_page == "Machine Risk":
                     estimated_days = max(1, int((100 - risk_pct) * 0.45))
                     estimated_hours = estimated_days * 24
 
-                    risk_color = "#f87171" if risk_pct > 60 else "#fbbf24" if risk_pct > 30 else "#34d399"
+                    risk_color = "#f87171" if risk_pct > 60 else "#fbbf24" if risk_pct > 35 else "#34d399"
 
                     st.session_state.machine_result = {
                         "machine_id": selected_machine,
@@ -1416,7 +1416,7 @@ elif selected_page == "Machine Risk":
             )
 
         with res_col3:
-            status_text = "CRITICAL ACTION" if m_res['risk_pct'] > 60 else "SCHEDULE CHECK" if m_res['risk_pct'] > 30 else "HEALTHY"
+            status_text = "CRITICAL ACTION" if m_res['risk_pct'] > 60 else "SCHEDULE CHECK" if m_res['risk_pct'] > 35 else "HEALTHY"
             render_html(
                 f"""
                 <div class="stat-card" style="background: {hex_to_rgba(m_res['risk_color'], 0.10)}; border: 1px solid {hex_to_rgba(m_res['risk_color'], 0.40)};">
@@ -1589,7 +1589,7 @@ elif selected_page == "Model Architecture":
             <div class="glass-panel">
                 <div class="panel-title">Action Layer</div>
                 <div class="panel-heading">Prescriptive Rule Engine</div>
-                <div style="color: #cbd5e1; font-size: 0.82rem; line-height: 1.6;">
+                <div style="color: #cbd5e1; font-size: 0.82rem; line-name: 1.6;">
                     Translates multi-model probabilistic outputs into clear, non-technical maintenance instructions for field engineers and operational managers.
                 </div>
             </div>
