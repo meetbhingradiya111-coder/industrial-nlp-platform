@@ -4,6 +4,7 @@ from datetime import datetime
 import plotly.graph_objects as go
 import plotly.express as px
 import os
+import re
 
 # ============================================================
 # CONFIGURATION
@@ -651,6 +652,74 @@ def page_header(title, subtitle):
 
 
 # ============================================================
+# INPUT VALIDATION (only genuine maintenance logs are accepted)
+# ============================================================
+
+INVALID_INPUT_MSG = (
+    "Please enter valid data. The input must be a maintenance log entry that "
+    "describes equipment inspection, condition or a fault "
+    "(e.g. \"Pump inspected, no leaks or unusual sounds observed.\")."
+)
+
+# Word stems taken from the vocabulary of maintenance_logs.csv
+MAINTENANCE_STEMS = (
+    # activities / documents
+    "inspect", "maintenan", "servic", "repair", "replac", "check", "lubric",
+    "monitor", "shutdown", "handover", "technician", "shift", "calibrat",
+    "adjust", "clean", "tighten", "overhaul", "schedul", "observ",
+    # equipment / components
+    "bear", "motor", "pump", "valve", "gearbox", "gear", "shaft", "coupling",
+    "belt", "sensor", "conveyor", "compressor", "fan", "actuator", "hydraul",
+    "pneumat", "machine", "equipment", "assembly", "housing", "panel",
+    "breaker", "cooling", "filter", "pipe", "seal", "bolt", "chain", "roller",
+    "engine", "turbine", "reservoir", "drive", "component", "system", "unit",
+    # symptoms / conditions / measurements
+    "vibrat", "noise", "sound", "grind", "hiss", "leak", "overheat", "heat",
+    "temperat", "thermal", "pressur", "voltage", "current", "electric", "oil",
+    "fluid", "lubricant", "wear", "worn", "damag", "crack", "corros", "misalign",
+    "align", "fault", "failure", "fail", "abnormal", "anomal", "unusual",
+    "normal", "stable", "operat", "running", "perform", "malfunction",
+    "spike", "fluctuat", "contaminat", "friction", "mechanic", "speed",
+    "tension", "stuck", "jam", "smoke", "burn", "trip",
+)
+
+
+def validate_log_text(text):
+    """Return (is_valid, message). Accepts only text that looks like a maintenance log."""
+    if text is None:
+        return False, INVALID_INPUT_MSG
+
+    cleaned = " ".join(str(text).split())
+
+    # 1. length limits
+    if len(cleaned) < 10 or len(cleaned) > 2000:
+        return False, INVALID_INPUT_MSG
+
+    # 2. mostly letters (rejects numbers, symbols, emails, random codes)
+    non_space = cleaned.replace(" ", "")
+    letters = sum(ch.isalpha() for ch in non_space)
+    if letters / len(non_space) < 0.7:
+        return False, INVALID_INPUT_MSG
+
+    # 3. at least 3 real words
+    words = re.findall(r"[A-Za-z]{2,}", cleaned.lower())
+    if len(words) < 3:
+        return False, INVALID_INPUT_MSG
+
+    # 4. reject keyboard-mash / repeated-word input ("asdf asdf asdf")
+    if len(set(words)) < 3:
+        return False, INVALID_INPUT_MSG
+    if any(re.search(r"(.)\1{4,}", w) for w in words):
+        return False, INVALID_INPUT_MSG
+
+    # 5. must mention something related to maintenance / equipment
+    if not any(w.startswith(stem) for w in words for stem in MAINTENANCE_STEMS):
+        return False, INVALID_INPUT_MSG
+
+    return True, ""
+
+
+# ============================================================
 # API INTERACTION LOGIC
 # ============================================================
 
@@ -1089,6 +1158,8 @@ if selected_page == "Dashboard":
     if st.button("Run Multi-Model AI Diagnostic", type="primary", use_container_width=True):
         if not log_input.strip():
             st.warning("Please enter a maintenance log entry.")
+        elif not validate_log_text(log_input)[0]:
+            st.error(INVALID_INPUT_MSG)
         else:
             with st.spinner("Analyzing log through DistilBERT & Autoencoder models..."):
                 try:
@@ -1159,6 +1230,8 @@ elif selected_page == "AI Log Analyzer":
     if run_analysis:
         if not log_input.strip():
             st.warning("Please input observation log text.")
+        elif not validate_log_text(log_input)[0]:
+            st.error(INVALID_INPUT_MSG)
         else:
             with st.spinner("Evaluating models..."):
                 try:
@@ -1349,6 +1422,20 @@ elif selected_page == "Machine Risk":
         if len(active_logs) < 3:
             st.warning("Please enter at least 3 historical logs for time-series analysis.")
         else:
+            invalid_entries = [
+                i + 1
+                for i, entry in enumerate(st.session_state.fleet_data[selected_machine])
+                if entry.strip() and not validate_log_text(entry)[0]
+            ]
+            if invalid_entries:
+                st.error(
+                    INVALID_INPUT_MSG
+                    + " Invalid entries: "
+                    + ", ".join(f"Log Entry #{n}" for n in invalid_entries)
+                    + "."
+                )
+                st.stop()
+
             with st.spinner("Processing temporal log sequence through DistilBERT + LSTM Risk Engine..."):
                 try:
                     full_resp = predict_sequence(active_logs)
