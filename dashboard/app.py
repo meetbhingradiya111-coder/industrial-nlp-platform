@@ -1444,14 +1444,6 @@ elif selected_page == "Machine Risk":
             hovertemplate="%{x}<br>Risk: %{y:.1f}%<extra></extra>",
             name="Degradation Trend"
         ))
-        fig_trend.add_hline(
-            y=50,
-            line_dash="dash",
-            line_color="#94a3b8",
-            annotation_text="Model threshold (50%)",
-            annotation_position="top left",
-            annotation_font_color="#94a3b8"
-        )
         fig_trend.update_layout(
             title=f"<b>Degradation Sequence Projection ({selected_machine})</b>",
             paper_bgcolor="rgba(0,0,0,0)",
