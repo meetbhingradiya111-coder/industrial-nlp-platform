@@ -55,17 +55,17 @@ if "fleet_data" not in st.session_state:
 MACHINE_LOGS = {
     0: {  # Machine #1 (M-101)
         "healthy": [
-            "Gearbox checked during routine inspection. No issues found.",
-            "Bearing assembly checked, operating smoothly with no unusual noise.",
-            "Scheduled maintenance completed successfully.",
-            "Motor reviewed and confirmed operating within expected limits.",
-            "Valve inspected visually. No abnormalities detected.",
-            "Routine check completed on gearbox. No issues found.",
-            "Pump inspected, no leaks or unusual sounds observed.",
-            "Bearing inspected, no abnormalities detected.",
-            "Scheduled maintenance completed successfully.",
-            "Motor inspected, no unusual sounds observed.",
-        ],
+    "a morning inspection round was carried out on the sensor today belt tension along with other key indicators remained within the expected normal range and no unusual noise leakage or mechanical irregularities were observed during the inspection confirming stable operating condition",
+    "following the preventive maintenance the sensor was confirmed to be operating normally all monitored parameters including running temperature and vibration levels were within standard limits and no corrective action was required at this time",
+    "hydraulic system functioning normally during morning inspection round",
+    "as part of the end of shift inspection a detailed check of the sensor was conducted the equipment showed consistent stable performance throughout the inspection with no abnormal readings sounds or signs of mechanical stress noted by the technician",
+    "inspection of the bearing during preventive maintenance showed stable operation with no signs of wear or irregularity",
+    "the bearing was monitored closely during monthly maintenance review oil level levels stayed consistent throughout and the technician reported no unusual sounds vibrations or signs of wear requiring further attention at this stage",
+    "no concerns after weekly system check on coupling",
+    "following the end of shift inspection the gearbox was confirmed to be operating normally all monitored parameters including rotational speed were within standard limits and no corrective action was required at this time",
+    "routine scheduled service completed no issues found on gearbox",
+    "no concerns after safety compliance check on motor",
+],
         "degrading": [
             "Gearbox checked during routine inspection. No issues found.",
             "Slight noise noticed near bearing area during inspection.",
