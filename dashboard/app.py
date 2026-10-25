@@ -5,7 +5,6 @@ import plotly.graph_objects as go
 import plotly.express as px
 import os
 import re
-from pydantic import BaseModel, ValidationError, field_validator
 
 # ============================================================
 # CONFIGURATION
@@ -685,54 +684,39 @@ MAINTENANCE_STEMS = (
 )
 
 
-class MaintenanceLogInput(BaseModel):
-    """Pydantic model: a single input is valid only if it is a real maintenance log."""
-
-    log_text: str
-
-    @field_validator("log_text", mode="before")
-    @classmethod
-    def clean_text(cls, v):
-        if v is None:
-            raise ValueError(INVALID_INPUT_MSG)
-        return " ".join(str(v).split())
-
-    @field_validator("log_text")
-    @classmethod
-    def must_be_maintenance_log(cls, v):
-        # 1. length limits
-        if len(v) < 10 or len(v) > 2000:
-            raise ValueError(INVALID_INPUT_MSG)
-
-        # 2. mostly letters (rejects numbers, symbols, emails, random codes)
-        non_space = v.replace(" ", "")
-        letters = sum(ch.isalpha() for ch in non_space)
-        if letters / len(non_space) < 0.7:
-            raise ValueError(INVALID_INPUT_MSG)
-
-        # 3. at least 3 real words
-        words = re.findall(r"[A-Za-z]{2,}", v.lower())
-        if len(words) < 3:
-            raise ValueError(INVALID_INPUT_MSG)
-
-        # 4. reject keyboard-mash / repeated-word input ("asdf asdf asdf")
-        if len(set(words)) < 3 or any(re.search(r"(.)\1{4,}", w) for w in words):
-            raise ValueError(INVALID_INPUT_MSG)
-
-        # 5. must mention something related to maintenance / equipment
-        if not any(w.startswith(stem) for w in words for stem in MAINTENANCE_STEMS):
-            raise ValueError(INVALID_INPUT_MSG)
-
-        return v
-
-
 def validate_log_text(text):
-    """Return (is_valid, message) using the MaintenanceLogInput Pydantic model."""
-    try:
-        MaintenanceLogInput(log_text=text)
-        return True, ""
-    except ValidationError:
+    """Return (is_valid, message). Accepts only text that looks like a maintenance log."""
+    if text is None:
         return False, INVALID_INPUT_MSG
+
+    cleaned = " ".join(str(text).split())
+
+    # 1. length limits
+    if len(cleaned) < 10 or len(cleaned) > 2000:
+        return False, INVALID_INPUT_MSG
+
+    # 2. mostly letters (rejects numbers, symbols, emails, random codes)
+    non_space = cleaned.replace(" ", "")
+    letters = sum(ch.isalpha() for ch in non_space)
+    if letters / len(non_space) < 0.7:
+        return False, INVALID_INPUT_MSG
+
+    # 3. at least 3 real words
+    words = re.findall(r"[A-Za-z]{2,}", cleaned.lower())
+    if len(words) < 3:
+        return False, INVALID_INPUT_MSG
+
+    # 4. reject keyboard-mash / repeated-word input ("asdf asdf asdf")
+    if len(set(words)) < 3:
+        return False, INVALID_INPUT_MSG
+    if any(re.search(r"(.)\1{4,}", w) for w in words):
+        return False, INVALID_INPUT_MSG
+
+    # 5. must mention something related to maintenance / equipment
+    if not any(w.startswith(stem) for w in words for stem in MAINTENANCE_STEMS):
+        return False, INVALID_INPUT_MSG
+
+    return True, ""
 
 
 # ============================================================
